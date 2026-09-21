@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, Roboto, Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+      color: #222;
+    }
+    h1 { font-size: 20px; margin: 0 0 20px; text-align: center; }
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-width: 420px;
+      margin: 0 auto;
+    }
+    label { font-size: 14px; font-weight: 600; }
+    input, select {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      background: white;
+    }
+    button {
+      padding: 16px;
+      font-size: 17px;
+      font-weight: 600;
+      color: white;
+      background: #2e7d32;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    button:active { background: #1b5e20; }
+    button:disabled { background: #999; }
+    #msg { text-align: center; font-size: 14px; min-height: 20px; }
+    #msg.ok { color: #2e7d32; }
+    #msg.error { color: #c62828; }
+    nav { text-align: center; margin-top: 16px; }
+    nav a { color: #2e7d32; text-decoration: none; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>Registrar gasto</h1>
+  <form id="form">
+    <div>
+      <label for="fecha">Fecha</label>
+      <input type="date" id="fecha" required>
+    </div>
+    <div>
+      <label for="categoria">Categoría</label>
+      <select id="categoria" required></select>
+    </div>
+    <div>
+      <label for="descripcion">Descripción</label>
+      <input type="text" id="descripcion" placeholder="Ej: Mercado del mes" required>
+    </div>
+    <div>
+      <label for="monto">Monto</label>
+      <input type="number" id="monto" min="0" step="0.01" placeholder="0" required>
+    </div>
+    <button type="submit" id="submitBtn">Guardar gasto</button>
+    <div id="msg"></div>
+  </form>
+  <nav><a href="?page=resumen">Ver resumen del mes</a></nav>
+
+  <script>
+    document.getElementById('fecha').valueAsDate = new Date();
+
+    google.script.run.withSuccessHandler(function(categorias) {
+      const select = document.getElementById('categoria');
+      categorias.forEach(function(cat) {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.textContent = cat;
+        select.appendChild(opt);
+      });
+    }).getCategorias();
+
+    document.getElementById('form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn');
+      const msg = document.getElementById('msg');
+      btn.disabled = true;
+      msg.textContent = '';
+      msg.className = '';
+
+      const fecha = document.getElementById('fecha').value;
+      const categoria = document.getElementById('categoria').value;
+      const descripcion = document.getElementById('descripcion').value;
+      const monto = document.getElementById('monto').value;
+
+      google.script.run
+        .withSuccessHandler(function() {
+          msg.textContent = 'Gasto guardado ✓';
+          msg.className = 'ok';
+          btn.disabled = false;
+          document.getElementById('descripcion').value = '';
+          document.getElementById('monto').value = '';
+        })
+        .withFailureHandler(function(err) {
+          msg.textContent = 'Error: ' + err.message;
+          msg.className = 'error';
+          btn.disabled = false;
+        })
+        .addExpense(fecha, categoria, descripcion, monto);
+    });
+  </script>
+</body>
+</html>

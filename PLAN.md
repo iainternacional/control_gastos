@@ -39,7 +39,3 @@ El código se desarrolla localmente con `clasp` y se sube al proyecto de Apps Sc
 5. Agregar gráfica de gastos por categoría/mes con Google Charts.
 6. `clasp push` + desplegar como Web App, obtener la URL.
 7. Probar en ambos celulares y agregar a pantalla de inicio.
-
-## Pendiente
-
-- Arreglar la ubicación del repositorio Git: actualmente está inicializado en `C:\Users\andre` (carpeta de usuario) en lugar de en `Control_Gastos`, por lo que rastrea archivos de todo el perfil de Windows. Debe crearse un repo nuevo específicamente dentro de `Control_Gastos`.
