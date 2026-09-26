@@ -12,15 +12,32 @@ function getSheet() {
   return SpreadsheetApp.openById(SPREADSHEET_ID);
 }
 
+/**
+ * URL fija del despliegue activo. ScriptApp.getService().getUrl() no es
+ * confiable en despliegues restringidos al dominio de Workspace (a veces
+ * devuelve la URL sin el prefijo /a/macros/<dominio>/, que falla al abrirse
+ * con "No se puede abrir el archivo en estos momentos"). Si el usuario crea
+ * un nuevo despliegue con otra URL, este valor debe actualizarse a mano.
+ */
+const APP_URL = 'https://script.google.com/a/macros/ipuc.org.co/s/AKfycbw3Ha8N1l4dm7HPmv-me279741xCleAIzw2ct0PETqRU57ZZ1W2Xrmn8ae6PbBnilfpfg/exec';
+
 const CATEGORIAS_DEFAULT = [
   'Mercado', 'Transporte', 'Vivienda/Servicios', 'Salud',
   'Entretenimiento', 'Ropa', 'Deudas/Préstamos', 'Otros'
 ];
 
+const CATEGORIAS_INGRESOS_DEFAULT = [
+  'Salario', 'Dinero regalado', 'Ingreso extra', 'Intereses/Rendimientos'
+];
+
 function doGet(e) {
-  const page = (e && e.parameter && e.parameter.page === 'resumen') ? 'Resumen' : 'Formulario';
-  return HtmlService.createTemplateFromFile(page)
-    .evaluate()
+  const param = e && e.parameter && e.parameter.page;
+  const page = param === 'resumen' ? 'Resumen' : param === 'ingreso' ? 'Ingreso' : 'Formulario';
+  const authuser = e && e.parameter && e.parameter.authuser;
+  const template = HtmlService.createTemplateFromFile(page);
+  template.appUrl = APP_URL;
+  template.authSuffix = authuser ? ('&authuser=' + authuser) : '';
+  return template.evaluate()
     .setTitle('Control de Gastos')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
@@ -49,9 +66,20 @@ function setupSheets() {
     CATEGORIAS_DEFAULT.forEach(c => presupuesto.appendRow([c, 0]));
   }
 
+  const ingresos = ss.getSheetByName('Ingresos') || ss.insertSheet('Ingresos');
+  if (ingresos.getLastRow() === 0) {
+    ingresos.appendRow(['Fecha', 'Categoría', 'Descripción', 'Monto']);
+  }
+
+  const categoriasIngresos = ss.getSheetByName('CategoriasIngresos') || ss.insertSheet('CategoriasIngresos');
+  if (categoriasIngresos.getLastRow() === 0) {
+    categoriasIngresos.appendRow(['Categoría']);
+    CATEGORIAS_INGRESOS_DEFAULT.forEach(c => categoriasIngresos.appendRow([c]));
+  }
+
+  const permitidas = ['Gastos', 'Categorías', 'Presupuesto', 'Ingresos', 'CategoriasIngresos'];
   ss.getSheets().forEach(sheet => {
-    const name = sheet.getName();
-    if (name !== 'Gastos' && name !== 'Categorías' && name !== 'Presupuesto') {
+    if (permitidas.indexOf(sheet.getName()) === -1) {
       ss.deleteSheet(sheet);
     }
   });
@@ -66,8 +94,50 @@ function getCategorias() {
     .filter(String);
 }
 
+function addCategoria(nombre) {
+  const limpio = String(nombre).trim();
+  if (!limpio) throw new Error('El nombre no puede estar vacío');
+
+  const existentes = getCategorias();
+  const yaExiste = existentes.some(c => c.toLowerCase() === limpio.toLowerCase());
+  if (yaExiste) throw new Error('Esa categoría ya existe');
+
+  const ss = getSheet();
+  ss.getSheetByName('Categorías').appendRow([limpio]);
+  ss.getSheetByName('Presupuesto').appendRow([limpio, 0]);
+
+  return { ok: true, categoria: limpio };
+}
+
 function addExpense(fecha, categoria, descripcion, monto) {
   const sheet = getSheet().getSheetByName('Gastos');
+  sheet.appendRow([new Date(fecha), categoria, descripcion, parseFloat(monto)]);
+  return { ok: true };
+}
+
+function getCategoriasIngresos() {
+  const sheet = getSheet().getSheetByName('CategoriasIngresos');
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  return sheet.getRange(2, 1, lastRow - 1, 1).getValues()
+    .map(row => row[0])
+    .filter(String);
+}
+
+function addCategoriaIngreso(nombre) {
+  const limpio = String(nombre).trim();
+  if (!limpio) throw new Error('El nombre no puede estar vacío');
+
+  const existentes = getCategoriasIngresos();
+  const yaExiste = existentes.some(c => c.toLowerCase() === limpio.toLowerCase());
+  if (yaExiste) throw new Error('Esa categoría ya existe');
+
+  getSheet().getSheetByName('CategoriasIngresos').appendRow([limpio]);
+  return { ok: true, categoria: limpio };
+}
+
+function addIngreso(fecha, categoria, descripcion, monto) {
+  const sheet = getSheet().getSheetByName('Ingresos');
   sheet.appendRow([new Date(fecha), categoria, descripcion, parseFloat(monto)]);
   return { ok: true };
 }
@@ -83,14 +153,9 @@ function getPresupuesto() {
   return map;
 }
 
-function getResumen(anio, mes) {
-  const sheet = getSheet().getSheetByName('Gastos');
+function sumarPorMes(sheet, y, m) {
   const lastRow = sheet.getLastRow();
   const data = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 4).getValues() : [];
-
-  const now = new Date();
-  const y = anio || now.getFullYear();
-  const m = mes || (now.getMonth() + 1);
 
   const totales = {};
   let total = 0;
@@ -106,13 +171,33 @@ function getResumen(anio, mes) {
     }
   });
 
+  return { totales, total };
+}
+
+function getResumen(anio, mes) {
+  const now = new Date();
+  const y = anio || now.getFullYear();
+  const m = mes || (now.getMonth() + 1);
+
+  const gastos = sumarPorMes(getSheet().getSheetByName('Gastos'), y, m);
+  const ingresos = sumarPorMes(getSheet().getSheetByName('Ingresos'), y, m);
+
+  const total = gastos.total;
+  const totalIngresos = ingresos.total;
+  const disponible = totalIngresos - total;
+  const porcentajeGastado = totalIngresos > 0 ? (total / totalIngresos * 100) : null;
+
   const presupuesto = getPresupuesto();
   const categorias = getCategorias();
-  const detalle = categorias.map(cat => ({
-    categoria: cat,
-    gastado: totales[cat] || 0,
-    presupuesto: presupuesto[cat] || 0
-  }));
+  const detalle = categorias.map(cat => {
+    const gastado = gastos.totales[cat] || 0;
+    return {
+      categoria: cat,
+      gastado: gastado,
+      presupuesto: presupuesto[cat] || 0,
+      porcentajeIngreso: totalIngresos > 0 ? (gastado / totalIngresos * 100) : null
+    };
+  });
 
-  return { anio: y, mes: m, total, detalle };
+  return { anio: y, mes: m, total, totalIngresos, disponible, porcentajeGastado, detalle };
 }
