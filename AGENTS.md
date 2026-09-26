@@ -59,27 +59,54 @@ it means a code fix is not live until the user does both.
 No bundler or compiler checks that `google.script.run.<fn>()` in the HTML matches
 `function <fn>()` in `Code.gs`. Renaming or removing a server function breaks the page at
 runtime with no static error. The current public surface, called from the HTML, is exactly:
-`getCategorias`, `addExpense`, `getPresupuesto`, `getResumen`.
+`getCategorias`, `addCategoria`, `addExpense`, `getPresupuesto`, `getCategoriasIngresos`,
+`addCategoriaIngreso`, `addIngreso`, `getResumen`.
 
-`include(filename)` in `Code.gs` is dead code — both HTML files are self-contained. There are
-no partials; do not factor shared markup out without also wiring a real include mechanism.
+`include(filename)` in `Code.gs` is dead code — all three HTML files are self-contained. There
+are no partials; do not factor shared markup out without also wiring a real include mechanism.
+`Formulario.html` and `Ingreso.html` are near-duplicates by design (same "+ agregar categoría"
+UX, same layout) — a change to one's category-adding flow almost certainly needs the same
+change in the other.
 
 ## Code that does not do what it looks like
 
-- `doGet` only tests `page === 'resumen'`; **every other value falls through to Formulario**.
-  That is why `Resumen.html`'s `?page=form` link works at all. Adding a third page means
-  changing that condition, not just adding an HTML file.
+- `doGet` now has three explicit branches (`resumen`, `ingreso`, else → `Formulario`) and injects
+  `appUrl` into every template. Relative `<a href="?page=...">` links do **not** work reliably in
+  Apps Script HtmlService — pages render inside a sandboxed `googleusercontent.com` iframe, so a
+  relative href resolves against that iframe's URL, not the `/exec` URL. Every nav link must be
+  built as `<?= appUrl ?>?page=...`, never a bare relative href.
+- **`appUrl` is the hardcoded `APP_URL` constant, not `ScriptApp.getService().getUrl()`.**
+  Verified by failure: this deployment is restricted to the `ipuc.org.co` Workspace domain, whose
+  correct URL shape is `https://script.google.com/a/macros/ipuc.org.co/s/<id>/exec`.
+  `ScriptApp.getService().getUrl()` returned a URL that did not match that shape, and navigating
+  to it from the phone failed with Google's "No se puede abrir el archivo en estos momentos" —
+  even though the original bookmarked `/a/macros/.../exec` URL loaded fine. `APP_URL` in
+  `Code.gs` is now the single source of truth for the app's own base URL; if the user ever
+  creates a new deployment (as opposed to a new version of the same one), `APP_URL` must be
+  updated by hand to the new `/exec` URL, same as `SPREADSHEET_ID`.
+- **Multi-account phones need `authuser` preserved, not just `appUrl`.** On a phone with several
+  Google accounts signed in, the URL Google actually loads is `.../exec?authuser=N&page=...`.
+  `ScriptApp.getService().getUrl()` never includes `authuser`, so a nav link built as plain
+  `<?= appUrl ?>?page=X` silently drops back to account 0 on click — if that account lacks access
+  to the Sheet, the target page fails to load with no visible error. `doGet` reads
+  `e.parameter.authuser` and injects it as `template.authSuffix` (`'&authuser=N'` or `''`); every
+  nav link must append `<?= authSuffix ?>` after its `?page=...`, in all three HTML files.
 - `getResumen(anio, mes)` takes a month and year, but `Resumen.html` calls `getResumen()` with
   no arguments, so the summary is always the current month. Both parameters are effectively dead.
+- `getResumen()`'s `porcentajeGastado` and each detalle item's `porcentajeIngreso` are `null`
+  (not `0` or `NaN`) when `totalIngresos` is `0` for that month — the frontend must check for
+  `null` before formatting, not just falsiness.
 - Currency formatting is hardcoded in `Resumen.html` as `'$' + n.toLocaleString('es-CO', …)`.
   Changing currency or number separators means editing that one line; there is no locale config.
+- `Ingresos`/`CategoriasIngresos` have no `Presupuesto`-style budget/limit concept — that only
+  exists for expenses. Don't assume symmetry beyond the Fecha/Categoría/Descripción/Monto shape.
 
 ## `setupSheets()` is destructive — never run it casually
 
-`setupSheets()` in `Code.gs` **deletes every sheet that is not** `Gastos`, `Categorías`, or
-`Presupuesto`. If the user has added a tab for their own bookkeeping, this wipes it. It only
-seeds headers when `getLastRow() === 0`, so re-running is safe for the three managed tabs and
-nothing else.
+`setupSheets()` in `Code.gs` **deletes every sheet that is not** `Gastos`, `Categorías`,
+`Presupuesto`, `Ingresos`, or `CategoriasIngresos`. If the user has added a tab for their own
+bookkeeping, this wipes it. It only seeds headers when `getLastRow() === 0`, so re-running is
+safe for the five managed tabs and nothing else.
 
 ## Editing gotchas
 
