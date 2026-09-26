@@ -1,3 +1,17 @@
+/**
+ * Este script es standalone (no está vinculado a una hoja), así que
+ * SpreadsheetApp.getActiveSpreadsheet() devuelve null. Se resuelve la hoja por ID.
+ *
+ * Para obtener el ID: abre tu Google Sheet y copia el segmento entre
+ * /spreadsheets/d/ y /edit en la URL. Ejemplo:
+ * https://docs.google.com/spreadsheets/d/1AbC...XyZ/edit  ->  1AbC...XyZ
+ */
+const SPREADSHEET_ID = '10O8anjtuoIF4IV1ZjVW8Bo8yx5ro4mo1SRW58YP15E4';
+
+function getSheet() {
+  return SpreadsheetApp.openById(SPREADSHEET_ID);
+}
+
 const CATEGORIAS_DEFAULT = [
   'Mercado', 'Transporte', 'Vivienda/Servicios', 'Salud',
   'Entretenimiento', 'Ropa', 'Deudas/Préstamos', 'Otros'
@@ -16,7 +30,7 @@ function include(filename) {
 }
 
 function setupSheets() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSheet();
 
   const gastos = ss.getSheetByName('Gastos') || ss.insertSheet('Gastos');
   if (gastos.getLastRow() === 0) {
@@ -44,7 +58,7 @@ function setupSheets() {
 }
 
 function getCategorias() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Categorías');
+  const sheet = getSheet().getSheetByName('Categorías');
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
   return sheet.getRange(2, 1, lastRow - 1, 1).getValues()
@@ -53,13 +67,13 @@ function getCategorias() {
 }
 
 function addExpense(fecha, categoria, descripcion, monto) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Gastos');
+  const sheet = getSheet().getSheetByName('Gastos');
   sheet.appendRow([new Date(fecha), categoria, descripcion, parseFloat(monto)]);
   return { ok: true };
 }
 
 function getPresupuesto() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Presupuesto');
+  const sheet = getSheet().getSheetByName('Presupuesto');
   const lastRow = sheet.getLastRow();
   const map = {};
   if (lastRow < 2) return map;
@@ -70,7 +84,7 @@ function getPresupuesto() {
 }
 
 function getResumen(anio, mes) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Gastos');
+  const sheet = getSheet().getSheetByName('Gastos');
   const lastRow = sheet.getLastRow();
   const data = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 4).getValues() : [];
 
