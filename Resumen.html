@@ -16,16 +16,26 @@
     h1 { font-size: 20px; margin: 0 0 4px; text-align: center; }
     #periodo { text-align: center; font-size: 14px; color: #666; margin-bottom: 16px; }
     .container { max-width: 480px; margin: 0 auto; }
+    .totales { display: flex; gap: 10px; margin-bottom: 16px; }
     .total {
+      flex: 1;
       background: white;
       border-radius: 10px;
       padding: 16px;
       text-align: center;
-      margin-bottom: 16px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
     .total .label { font-size: 13px; color: #666; }
-    .total .valor { font-size: 28px; font-weight: 700; }
+    .total .valor { font-size: 24px; font-weight: 700; }
+    .resumenExtra {
+      background: white;
+      border-radius: 10px;
+      padding: 12px 16px;
+      text-align: center;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      font-size: 14px;
+    }
     #chart { width: 100%; height: 260px; margin-bottom: 16px; }
     table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; }
     th, td { padding: 10px 12px; text-align: left; font-size: 14px; border-bottom: 1px solid #eee; }
@@ -40,18 +50,28 @@
   <div class="container">
     <h1>Resumen del mes</h1>
     <div id="periodo"></div>
-    <div class="total">
-      <div class="label">Total gastado</div>
-      <div class="valor" id="totalValor">—</div>
+    <div class="totales">
+      <div class="total">
+        <div class="label">Total ingresado</div>
+        <div class="valor" id="totalIngresosValor">—</div>
+      </div>
+      <div class="total">
+        <div class="label">Total gastado</div>
+        <div class="valor" id="totalValor">—</div>
+      </div>
     </div>
+    <div class="resumenExtra" id="resumenExtra"></div>
     <div id="chart"></div>
     <table>
       <thead>
-        <tr><th>Categoría</th><th class="num">Gastado</th><th class="num">Presupuesto</th></tr>
+        <tr><th>Categoría</th><th class="num">Gastado</th><th class="num">Presupuesto</th><th class="num">% ingreso</th></tr>
       </thead>
       <tbody id="tabla"></tbody>
     </table>
-    <nav><a href="?page=form">Registrar un gasto</a></nav>
+    <nav>
+      <a href="<?= appUrl ?>?page=form<?= authSuffix ?>">Registrar un gasto</a> ·
+      <a href="<?= appUrl ?>?page=ingreso<?= authSuffix ?>">Registrar un ingreso</a>
+    </nav>
   </div>
 
   <script>
@@ -65,9 +85,18 @@
       google.script.run.withSuccessHandler(pintarResumen).getResumen();
     }
 
+    const fmtPct = p => p === null ? '—' : p.toFixed(0) + '%';
+
     function pintarResumen(resumen) {
       document.getElementById('periodo').textContent = MESES[resumen.mes - 1] + ' ' + resumen.anio;
       document.getElementById('totalValor').textContent = fmt(resumen.total);
+      document.getElementById('totalIngresosValor').textContent = fmt(resumen.totalIngresos);
+
+      const extra = document.getElementById('resumenExtra');
+      const disponibleClase = resumen.disponible < 0 ? ' class="over"' : '';
+      extra.innerHTML =
+        'Disponible: <strong' + disponibleClase + '>' + fmt(resumen.disponible) + '</strong>' +
+        ' &middot; Gastaste el <strong>' + fmtPct(resumen.porcentajeGastado) + '</strong> de tu ingreso';
 
       const tabla = document.getElementById('tabla');
       tabla.innerHTML = '';
@@ -79,7 +108,8 @@
         tr.innerHTML =
           '<td>' + item.categoria + '</td>' +
           '<td class="num' + (sobrePresupuesto ? ' over' : '') + '">' + fmt(item.gastado) + '</td>' +
-          '<td class="num">' + (item.presupuesto > 0 ? fmt(item.presupuesto) : '—') + '</td>';
+          '<td class="num">' + (item.presupuesto > 0 ? fmt(item.presupuesto) : '—') + '</td>' +
+          '<td class="num">' + fmtPct(item.porcentajeIngreso) + '</td>';
         tabla.appendChild(tr);
         if (item.gastado > 0) dataChart.push([item.categoria, item.gastado]);
       });

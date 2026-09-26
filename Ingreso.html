@@ -49,7 +49,7 @@
   </style>
 </head>
 <body>
-  <h1>Registrar gasto</h1>
+  <h1>Registrar ingreso</h1>
   <form id="form">
     <div>
       <label for="fecha">Fecha</label>
@@ -61,22 +61,22 @@
     </div>
     <div id="nuevaCategoriaBox" style="display:none;">
       <label for="nuevaCategoriaInput">Nombre de la categoría nueva</label>
-      <input type="text" id="nuevaCategoriaInput" placeholder="Ej: Mascotas">
+      <input type="text" id="nuevaCategoriaInput" placeholder="Ej: Bono">
       <button type="button" id="btnGuardarCategoria">Agregar categoría</button>
     </div>
     <div>
       <label for="descripcion">Descripción</label>
-      <input type="text" id="descripcion" placeholder="Ej: Mercado del mes" required>
+      <input type="text" id="descripcion" placeholder="Ej: Quincena de septiembre" required>
     </div>
     <div>
       <label for="monto">Monto</label>
       <input type="number" id="monto" min="0" step="0.01" placeholder="0" required>
     </div>
-    <button type="submit" id="submitBtn">Guardar gasto</button>
+    <button type="submit" id="submitBtn">Guardar ingreso</button>
     <div id="msg"></div>
   </form>
   <nav>
-    <a href="<?= appUrl ?>?page=ingreso<?= authSuffix ?>">Registrar un ingreso</a> ·
+    <a href="<?= appUrl ?>?page=form<?= authSuffix ?>">Registrar un gasto</a> ·
     <a href="<?= appUrl ?>?page=resumen<?= authSuffix ?>">Ver resumen del mes</a>
   </nav>
 
@@ -103,7 +103,7 @@
       opcionNueva.value = OPCION_NUEVA;
       opcionNueva.textContent = '+ Agregar categoría nueva';
       select.appendChild(opcionNueva);
-    }).getCategorias();
+    }).getCategoriasIngresos();
 
     document.getElementById('categoria').addEventListener('change', function() {
       const box = document.getElementById('nuevaCategoriaBox');
@@ -147,7 +147,7 @@
           msg.className = 'error';
           btn.disabled = false;
         })
-        .addCategoria(nombre);
+        .addCategoriaIngreso(nombre);
     });
 
     document.getElementById('form').addEventListener('submit', function(e) {
@@ -172,7 +172,7 @@
 
       google.script.run
         .withSuccessHandler(function() {
-          msg.textContent = 'Gasto guardado ✓';
+          msg.textContent = 'Ingreso guardado ✓';
           msg.className = 'ok';
           btn.disabled = false;
           document.getElementById('descripcion').value = '';
@@ -183,7 +183,7 @@
           msg.className = 'error';
           btn.disabled = false;
         })
-        .addExpense(fecha, categoria, descripcion, monto);
+        .addIngreso(fecha, categoria, descripcion, monto);
     });
   </script>
 </body>
