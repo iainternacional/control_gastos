@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, Roboto, Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+      color: #222;
+    }
+    h1 { font-size: 20px; margin: 0 0 4px; text-align: center; }
+    .container { max-width: 480px; margin: 0 auto; }
+    h2 { font-size: 15px; margin: 20px 0 8px; }
+    ul { list-style: none; margin: 0; padding: 0; background: white; border-radius: 10px; overflow: hidden; }
+    li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid #eee;
+      font-size: 14px;
+    }
+    li:last-child { border-bottom: none; }
+    .nombre { flex: 1; overflow-wrap: anywhere; }
+    .nombre input {
+      width: 100%;
+      padding: 8px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+    button.icono {
+      border: none;
+      background: none;
+      font-size: 15px;
+      cursor: pointer;
+      padding: 4px 8px;
+      line-height: 1;
+    }
+    button.editar { color: #2e7d32; }
+    button.eliminar { color: #c62828; }
+    button.icono:disabled { color: #ccc; cursor: default; }
+    .vacio { text-align: center; color: #999; font-size: 13px; padding: 16px; background: white; border-radius: 10px; }
+    .agregar {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .agregar input {
+      flex: 1;
+      padding: 12px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      background: white;
+    }
+    .agregar button {
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      color: white;
+      background: #2e7d32;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    .agregar button:disabled { background: #999; }
+    #msg { text-align: center; font-size: 14px; min-height: 20px; margin-top: 12px; }
+    #msg.ok { color: #2e7d32; }
+    #msg.error { color: #c62828; }
+    nav { text-align: center; margin-top: 16px; }
+    nav a { color: #2e7d32; text-decoration: none; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Categorías</h1>
+
+    <h2>Categorías de gastos</h2>
+    <ul id="listaGastos"></ul>
+    <div class="vacio" id="vacioGastos" style="display:none;">Sin categorías de gastos</div>
+    <div class="agregar">
+      <input type="text" id="nuevaGasto" placeholder="Nueva categoría de gasto">
+      <button id="btnAgregarGasto">Agregar</button>
+    </div>
+
+    <h2>Categorías de ingreso</h2>
+    <ul id="listaIngresos"></ul>
+    <div class="vacio" id="vacioIngresos" style="display:none;">Sin categorías de ingreso</div>
+    <div class="agregar">
+      <input type="text" id="nuevaIngreso" placeholder="Nueva categoría de ingreso">
+      <button id="btnAgregarIngreso">Agregar</button>
+    </div>
+
+    <div id="msg"></div>
+
+    <nav>
+      <a href="<?= appUrl ?>?page=form<?= authSuffix ?>">Registrar un gasto</a> ·
+      <a href="<?= appUrl ?>?page=ingreso<?= authSuffix ?>">Registrar un ingreso</a> ·
+      <a href="<?= appUrl ?>?page=resumen<?= authSuffix ?>">Ver resumen</a> ·
+      <a href="<?= appUrl ?>?page=historial<?= authSuffix ?>">Ver/eliminar movimientos</a> ·
+      <a href="<?= appUrl ?>?page=presupuesto<?= authSuffix ?>">Editar presupuesto</a>
+    </nav>
+  </div>
+
+  <script>
+    function mostrarMsg(texto, clase) {
+      const msg = document.getElementById('msg');
+      msg.textContent = texto;
+      msg.className = clase;
+    }
+
+    function pintarLista(categorias, ulId, vacioId, tipo) {
+      const ul = document.getElementById(ulId);
+      const vacio = document.getElementById(vacioId);
+      ul.innerHTML = '';
+
+      if (categorias.length === 0) {
+        vacio.style.display = 'block';
+        return;
+      }
+      vacio.style.display = 'none';
+
+      categorias.forEach(function(cat) {
+        const li = document.createElement('li');
+        const span = document.createElement('span');
+        span.className = 'nombre';
+        span.textContent = cat;
+
+        const btnEditar = document.createElement('button');
+        btnEditar.className = 'icono editar';
+        btnEditar.title = 'Renombrar';
+        btnEditar.textContent = '✎';
+
+        const btnEliminar = document.createElement('button');
+        btnEliminar.className = 'icono eliminar';
+        btnEliminar.title = 'Eliminar';
+        btnEliminar.textContent = '✕';
+
+        let editando = false;
+        let procesando = false;
+
+        function salirModoEdicion() {
+          editando = false;
+          span.textContent = cat;
+          btnEditar.textContent = '✎';
+          btnEliminar.disabled = false;
+        }
+
+        function confirmarEdicion() {
+          if (procesando) return;
+          const input = span.querySelector('input');
+          if (!input) return;
+          const nuevo = input.value.trim();
+          if (!nuevo || nuevo === cat) {
+            salirModoEdicion();
+            return;
+          }
+
+          procesando = true;
+          input.disabled = true;
+          btnEditar.disabled = true;
+          mostrarMsg('', '');
+
+          const fn = tipo === 'gasto' ? 'renameCategoria' : 'renameCategoriaIngreso';
+          google.script.run
+            .withSuccessHandler(function() {
+              mostrarMsg('Categoría actualizada ✓', 'ok');
+              cargarCategorias();
+            })
+            .withFailureHandler(function(err) {
+              procesando = false;
+              mostrarMsg('Error: ' + err.message, 'error');
+              salirModoEdicion();
+            })
+            [fn](cat, nuevo);
+        }
+
+        function entrarModoEdicion() {
+          editando = true;
+          span.innerHTML = '';
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = cat;
+          span.appendChild(input);
+          input.focus();
+          input.select();
+          btnEditar.textContent = '✓';
+          btnEliminar.disabled = true;
+
+          input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') confirmarEdicion();
+            if (e.key === 'Escape') salirModoEdicion();
+          });
+          input.addEventListener('blur', function() {
+            setTimeout(function() {
+              if (editando) confirmarEdicion();
+            }, 150);
+          });
+        }
+
+        btnEditar.addEventListener('click', function() {
+          if (procesando) return;
+          if (editando) {
+            confirmarEdicion();
+          } else {
+            entrarModoEdicion();
+          }
+        });
+
+        btnEliminar.addEventListener('click', function() {
+          if (!confirm('¿Eliminar la categoría "' + cat + '"? Los movimientos ya guardados con esta categoría no se borran, solo dejará de estar disponible para nuevos registros.')) return;
+
+          btnEliminar.disabled = true;
+          btnEditar.disabled = true;
+          mostrarMsg('', '');
+
+          const fn = tipo === 'gasto' ? 'deleteCategoria' : 'deleteCategoriaIngreso';
+          google.script.run
+            .withSuccessHandler(function() {
+              mostrarMsg('Categoría eliminada ✓', 'ok');
+              cargarCategorias();
+            })
+            .withFailureHandler(function(err) {
+              btnEliminar.disabled = false;
+              btnEditar.disabled = false;
+              mostrarMsg('Error: ' + err.message, 'error');
+            })
+            [fn](cat);
+        });
+
+        li.appendChild(span);
+        li.appendChild(btnEditar);
+        li.appendChild(btnEliminar);
+        ul.appendChild(li);
+      });
+    }
+
+    function agregarCategoria(inputId, btnId, fn) {
+      const input = document.getElementById(inputId);
+      const btn = document.getElementById(btnId);
+      const nombre = input.value.trim();
+
+      if (!nombre) {
+        mostrarMsg('Escribe un nombre para la categoría', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+      mostrarMsg('', '');
+
+      google.script.run
+        .withSuccessHandler(function() {
+          input.value = '';
+          btn.disabled = false;
+          mostrarMsg('Categoría agregada ✓', 'ok');
+          cargarCategorias();
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          mostrarMsg('Error: ' + err.message, 'error');
+        })
+        [fn](nombre);
+    }
+
+    document.getElementById('btnAgregarGasto').addEventListener('click', function() {
+      agregarCategoria('nuevaGasto', 'btnAgregarGasto', 'addCategoria');
+    });
+    document.getElementById('btnAgregarIngreso').addEventListener('click', function() {
+      agregarCategoria('nuevaIngreso', 'btnAgregarIngreso', 'addCategoriaIngreso');
+    });
+
+    function cargarCategorias() {
+      google.script.run
+        .withSuccessHandler(function(categorias) {
+          pintarLista(categorias, 'listaGastos', 'vacioGastos', 'gasto');
+        })
+        .getCategorias();
+
+      google.script.run
+        .withSuccessHandler(function(categorias) {
+          pintarLista(categorias, 'listaIngresos', 'vacioIngresos', 'ingreso');
+        })
+        .getCategoriasIngresos();
+    }
+
+    cargarCategorias();
+  </script>
+</body>
+</html>

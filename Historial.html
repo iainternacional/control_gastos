@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, Roboto, Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+      color: #222;
+    }
+    h1 { font-size: 20px; margin: 0 0 4px; text-align: center; }
+    #periodo { text-align: center; font-size: 14px; color: #666; margin-bottom: 16px; }
+    .container { max-width: 480px; margin: 0 auto; }
+    h2 { font-size: 15px; margin: 20px 0 8px; }
+    table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; }
+    th, td { padding: 10px 12px; text-align: left; font-size: 13px; border-bottom: 1px solid #eee; }
+    th { background: #fafafa; font-size: 12px; color: #666; }
+    td.num { text-align: right; white-space: nowrap; }
+    td.acciones { text-align: right; width: 36px; }
+    .vacio { text-align: center; color: #999; font-size: 13px; padding: 16px; background: white; border-radius: 10px; }
+    button.eliminar {
+      border: none;
+      background: none;
+      color: #c62828;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 4px 8px;
+      line-height: 1;
+    }
+    button.eliminar:disabled { color: #ccc; cursor: default; }
+    #msg { text-align: center; font-size: 14px; min-height: 20px; margin-top: 8px; }
+    #msg.ok { color: #2e7d32; }
+    #msg.error { color: #c62828; }
+    nav { text-align: center; margin-top: 16px; }
+    nav a { color: #2e7d32; text-decoration: none; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Movimientos del mes</h1>
+    <div id="periodo"></div>
+
+    <h2>Gastos</h2>
+    <table>
+      <thead>
+        <tr><th>Fecha</th><th>Categoría</th><th>Descripción</th><th class="num">Monto</th><th></th></tr>
+      </thead>
+      <tbody id="tablaGastos"></tbody>
+    </table>
+    <div class="vacio" id="vacioGastos" style="display:none;">Sin gastos este mes</div>
+
+    <h2>Ingresos</h2>
+    <table>
+      <thead>
+        <tr><th>Fecha</th><th>Categoría</th><th>Descripción</th><th class="num">Monto</th><th></th></tr>
+      </thead>
+      <tbody id="tablaIngresos"></tbody>
+    </table>
+    <div class="vacio" id="vacioIngresos" style="display:none;">Sin ingresos este mes</div>
+
+    <div id="msg"></div>
+
+    <nav>
+      <a href="<?= appUrl ?>?page=form<?= authSuffix ?>">Registrar un gasto</a> ·
+      <a href="<?= appUrl ?>?page=ingreso<?= authSuffix ?>">Registrar un ingreso</a> ·
+      <a href="<?= appUrl ?>?page=resumen<?= authSuffix ?>">Ver resumen</a> ·
+      <a href="<?= appUrl ?>?page=categorias<?= authSuffix ?>">Gestionar categorías</a> ·
+      <a href="<?= appUrl ?>?page=presupuesto<?= authSuffix ?>">Editar presupuesto</a>
+    </nav>
+  </div>
+
+  <script>
+    const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const fmt = n => '$' + Number(n).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+    const fmtFecha = iso => {
+      const d = new Date(iso);
+      return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
+    };
+
+    function mostrarMsg(texto, clase) {
+      const msg = document.getElementById('msg');
+      msg.textContent = texto;
+      msg.className = clase;
+    }
+
+    function pintarTabla(movimientos, tbodyId, vacioId, tipo) {
+      const tbody = document.getElementById(tbodyId);
+      const vacio = document.getElementById(vacioId);
+      tbody.innerHTML = '';
+
+      if (movimientos.length === 0) {
+        vacio.style.display = 'block';
+        return;
+      }
+      vacio.style.display = 'none';
+
+      movimientos.forEach(function(mov) {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + fmtFecha(mov.fecha) + '</td>' +
+          '<td>' + mov.categoria + '</td>' +
+          '<td>' + mov.descripcion + '</td>' +
+          '<td class="num">' + fmt(mov.monto) + '</td>' +
+          '<td class="acciones"><button class="eliminar" title="Eliminar">✕</button></td>';
+
+        const btn = tr.querySelector('button.eliminar');
+        btn.addEventListener('click', function() {
+          const descripcionCorta = mov.descripcion ? ('"' + mov.descripcion + '"') : 'este movimiento';
+          if (!confirm('¿Eliminar ' + descripcionCorta + ' por ' + fmt(mov.monto) + '?')) return;
+
+          btn.disabled = true;
+          mostrarMsg('', '');
+
+          const fn = tipo === 'gasto' ? 'deleteExpense' : 'deleteIngreso';
+          google.script.run
+            .withSuccessHandler(function() {
+              tr.remove();
+              if (tbody.children.length === 0) vacio.style.display = 'block';
+              mostrarMsg('Eliminado ✓', 'ok');
+            })
+            .withFailureHandler(function(err) {
+              btn.disabled = false;
+              mostrarMsg('Error: ' + err.message, 'error');
+            })
+            [fn](mov.fila);
+        });
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    function cargarHistorial() {
+      const now = new Date();
+      document.getElementById('periodo').textContent = MESES[now.getMonth()] + ' ' + now.getFullYear();
+
+      google.script.run
+        .withSuccessHandler(function(gastos) {
+          pintarTabla(gastos, 'tablaGastos', 'vacioGastos', 'gasto');
+        })
+        .getGastos();
+
+      google.script.run
+        .withSuccessHandler(function(ingresos) {
+          pintarTabla(ingresos, 'tablaIngresos', 'vacioIngresos', 'ingreso');
+        })
+        .getIngresos();
+    }
+
+    cargarHistorial();
+  </script>
+</body>
+</html>
