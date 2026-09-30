@@ -62,7 +62,7 @@ function setupSheets() {
 
   const presupuesto = ss.getSheetByName('Presupuesto') || ss.insertSheet('Presupuesto');
   if (presupuesto.getLastRow() === 0) {
-    presupuesto.appendRow(['Categoría', 'Límite Mensual']);
+    presupuesto.appendRow(['Categoría', 'Límite Quincenal']);
     CATEGORIAS_DEFAULT.forEach(c => presupuesto.appendRow([c, 0]));
   }
 
