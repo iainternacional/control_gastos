@@ -13,7 +13,21 @@
       color: #222;
     }
     h1 { font-size: 20px; margin: 0 0 6px; text-align: center; }
-    p.info { text-align: center; font-size: 13px; color: #666; margin: 0 0 20px; }
+    p.info { text-align: center; font-size: 13px; color: #666; margin: 0 0 12px; }
+    .nav-periodo { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 8px; }
+    .nav-periodo button {
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #2e7d32;
+      background: white;
+      border: 1px solid #2e7d32;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .nav-periodo button:disabled { color: #ccc; border-color: #ccc; cursor: default; }
+    #periodo { font-size: 14px; color: #666; min-width: 110px; text-align: center; }
+    #origen { text-align: center; font-size: 12px; color: #999; margin: 0 0 16px; }
     .container { max-width: 420px; margin: 0 auto; }
     ul { list-style: none; margin: 0; padding: 0; }
     li {
@@ -60,6 +74,12 @@
   <div class="container">
     <h1>Presupuesto quincenal</h1>
     <p class="info">Define el límite quincenal para cada categoría de gasto.</p>
+    <div class="nav-periodo">
+      <button id="btnAnterior" type="button">← Anterior</button>
+      <div id="periodo"></div>
+      <button id="btnSiguiente" type="button">Siguiente →</button>
+    </div>
+    <div id="origen"></div>
 
     <ul id="lista"></ul>
     <div class="vacio" id="vacio" style="display:none;">No hay categorías de gasto todavía</div>
@@ -76,6 +96,12 @@
   </div>
 
   <script>
+    const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+    const hoy = new Date();
+    let anioActual = hoy.getFullYear();
+    let mesActual = hoy.getMonth() + 1;
+
     function mostrarMsg(texto, clase) {
       const msg = document.getElementById('msg');
       msg.textContent = texto;
@@ -83,8 +109,29 @@
     }
 
     function cargarPresupuesto() {
+      document.getElementById('btnAnterior').disabled = true;
+      document.getElementById('btnSiguiente').disabled = true;
+      document.getElementById('periodo').textContent = MESES[mesActual - 1] + ' ' + anioActual;
+      mostrarMsg('', '');
+
       google.script.run
-        .withSuccessHandler(function(detalle) {
+        .withSuccessHandler(function(resultado) {
+          anioActual = resultado.anio;
+          mesActual = resultado.mes;
+          document.getElementById('btnAnterior').disabled = false;
+          document.getElementById('btnSiguiente').disabled = false;
+          document.getElementById('periodo').textContent = MESES[mesActual - 1] + ' ' + anioActual;
+
+          const origen = document.getElementById('origen');
+          if (!resultado.origen) {
+            origen.textContent = 'Sin presupuesto definido todavía (valores en 0)';
+          } else if (resultado.origen.anio === anioActual && resultado.origen.mes === mesActual) {
+            origen.textContent = '';
+          } else {
+            origen.textContent = 'Heredado de ' + MESES[resultado.origen.mes - 1] + ' ' + resultado.origen.anio + ' — puedes ajustarlo para este mes';
+          }
+
+          const detalle = resultado.detalle;
           const ul = document.getElementById('lista');
           const vacio = document.getElementById('vacio');
           const guardar = document.getElementById('guardar');
@@ -118,10 +165,24 @@
           });
         })
         .withFailureHandler(function(err) {
+          document.getElementById('btnAnterior').disabled = false;
+          document.getElementById('btnSiguiente').disabled = false;
           mostrarMsg('Error: ' + err.message, 'error');
         })
-        .getPresupuestoDetalle();
+        .getPresupuestoDetalle(anioActual, mesActual);
     }
+
+    document.getElementById('btnAnterior').addEventListener('click', function() {
+      mesActual--;
+      if (mesActual < 1) { mesActual = 12; anioActual--; }
+      cargarPresupuesto();
+    });
+
+    document.getElementById('btnSiguiente').addEventListener('click', function() {
+      mesActual++;
+      if (mesActual > 12) { mesActual = 1; anioActual++; }
+      cargarPresupuesto();
+    });
 
     document.getElementById('guardar').addEventListener('click', function() {
       const btn = this;
@@ -137,12 +198,13 @@
         .withSuccessHandler(function() {
           btn.disabled = false;
           mostrarMsg('Presupuesto guardado ✓', 'ok');
+          document.getElementById('origen').textContent = '';
         })
         .withFailureHandler(function(err) {
           btn.disabled = false;
           mostrarMsg('Error: ' + err.message, 'error');
         })
-        .setPresupuestos(valores);
+        .setPresupuestos(anioActual, mesActual, valores);
     });
 
     cargarPresupuesto();

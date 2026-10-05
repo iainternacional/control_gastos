@@ -13,25 +13,46 @@
       color: #222;
     }
     h1 { font-size: 20px; margin: 0 0 4px; text-align: center; }
-    #periodo { text-align: center; font-size: 14px; color: #666; margin-bottom: 16px; }
+    .nav-periodo { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 16px; }
+    .nav-periodo button {
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #2e7d32;
+      background: white;
+      border: 1px solid #2e7d32;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .nav-periodo button:disabled { color: #ccc; border-color: #ccc; cursor: default; }
+    #periodo { font-size: 14px; color: #666; min-width: 110px; text-align: center; }
     .container { max-width: 480px; margin: 0 auto; }
     h2 { font-size: 15px; margin: 20px 0 8px; }
     table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; }
     th, td { padding: 10px 12px; text-align: left; font-size: 13px; border-bottom: 1px solid #eee; }
     th { background: #fafafa; font-size: 12px; color: #666; }
     td.num { text-align: right; white-space: nowrap; }
-    td.acciones { text-align: right; width: 36px; }
+    td.acciones { text-align: right; width: 64px; white-space: nowrap; }
     .vacio { text-align: center; color: #999; font-size: 13px; padding: 16px; background: white; border-radius: 10px; }
-    button.eliminar {
+    button.eliminar, button.editar, button.guardar, button.cancelar {
       border: none;
       background: none;
-      color: #c62828;
       font-size: 16px;
       cursor: pointer;
-      padding: 4px 8px;
+      padding: 4px 6px;
       line-height: 1;
     }
-    button.eliminar:disabled { color: #ccc; cursor: default; }
+    button.eliminar, button.cancelar { color: #c62828; }
+    button.editar, button.guardar { color: #2e7d32; }
+    button.eliminar:disabled, button.editar:disabled, button.guardar:disabled, button.cancelar:disabled { color: #ccc; cursor: default; }
+    td input[type="date"], td input[type="text"], td input[type="number"], td select {
+      width: 100%;
+      padding: 4px 6px;
+      font-size: 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      box-sizing: border-box;
+    }
     #msg { text-align: center; font-size: 14px; min-height: 20px; margin-top: 8px; }
     #msg.ok { color: #2e7d32; }
     #msg.error { color: #c62828; }
@@ -42,7 +63,11 @@
 <body>
   <div class="container">
     <h1>Movimientos del mes</h1>
-    <div id="periodo"></div>
+    <div class="nav-periodo">
+      <button id="btnAnterior" type="button">← Anterior</button>
+      <div id="periodo"></div>
+      <button id="btnSiguiente" type="button">Siguiente →</button>
+    </div>
 
     <h2>Gastos</h2>
     <table>
@@ -80,6 +105,11 @@
       const d = new Date(iso);
       return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
     };
+    const fmtFechaInput = iso => {
+      const d = new Date(iso);
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    };
+    const escapar = s => String(s == null ? '' : s).replace(/"/g, '&quot;');
 
     function mostrarMsg(texto, clase) {
       const msg = document.getElementById('msg');
@@ -87,7 +117,7 @@
       msg.className = clase;
     }
 
-    function pintarTabla(movimientos, tbodyId, vacioId, tipo) {
+    function pintarTabla(movimientos, tbodyId, vacioId, tipo, categorias) {
       const tbody = document.getElementById(tbodyId);
       const vacio = document.getElementById(vacioId);
       tbody.innerHTML = '';
@@ -100,15 +130,77 @@
 
       movimientos.forEach(function(mov) {
         const tr = document.createElement('tr');
-        tr.innerHTML =
-          '<td>' + fmtFecha(mov.fecha) + '</td>' +
-          '<td>' + mov.categoria + '</td>' +
-          '<td>' + mov.descripcion + '</td>' +
-          '<td class="num">' + fmt(mov.monto) + '</td>' +
-          '<td class="acciones"><button class="eliminar" title="Eliminar">✕</button></td>';
 
-        const btn = tr.querySelector('button.eliminar');
-        btn.addEventListener('click', function() {
+        function renderVista() {
+          tr.innerHTML =
+            '<td>' + fmtFecha(mov.fecha) + '</td>' +
+            '<td>' + mov.categoria + '</td>' +
+            '<td>' + mov.descripcion + '</td>' +
+            '<td class="num">' + fmt(mov.monto) + '</td>' +
+            '<td class="acciones">' +
+              '<button class="editar" title="Editar">✎</button>' +
+              '<button class="eliminar" title="Eliminar">✕</button>' +
+            '</td>';
+
+          tr.querySelector('button.editar').addEventListener('click', renderEdicion);
+          tr.querySelector('button.eliminar').addEventListener('click', onEliminar);
+        }
+
+        function renderEdicion() {
+          const listaCategorias = categorias.indexOf(mov.categoria) === -1
+            ? [mov.categoria].concat(categorias)
+            : categorias;
+          const opciones = listaCategorias.map(function(c) {
+            return '<option value="' + escapar(c) + '"' + (c === mov.categoria ? ' selected' : '') + '>' + c + '</option>';
+          }).join('');
+
+          tr.innerHTML =
+            '<td><input type="date" class="e-fecha" value="' + fmtFechaInput(mov.fecha) + '"></td>' +
+            '<td><select class="e-categoria">' + opciones + '</select></td>' +
+            '<td><input type="text" class="e-descripcion" value="' + escapar(mov.descripcion) + '"></td>' +
+            '<td class="num"><input type="number" class="e-monto" min="0" step="1" value="' + mov.monto + '"></td>' +
+            '<td class="acciones">' +
+              '<button class="guardar" title="Guardar">✓</button>' +
+              '<button class="cancelar" title="Cancelar">✕</button>' +
+            '</td>';
+
+          tr.querySelector('button.guardar').addEventListener('click', onGuardar);
+          tr.querySelector('button.cancelar').addEventListener('click', renderVista);
+        }
+
+        function onGuardar() {
+          const btnGuardar = tr.querySelector('button.guardar');
+          const btnCancelar = tr.querySelector('button.cancelar');
+          const fecha = tr.querySelector('.e-fecha').value;
+          const categoria = tr.querySelector('.e-categoria').value;
+          const descripcion = tr.querySelector('.e-descripcion').value.trim();
+          const monto = tr.querySelector('.e-monto').value;
+
+          if (!fecha || !categoria || monto === '') {
+            mostrarMsg('Completa todos los campos', 'error');
+            return;
+          }
+
+          btnGuardar.disabled = true;
+          btnCancelar.disabled = true;
+          mostrarMsg('', '');
+
+          const fn = tipo === 'gasto' ? 'editExpense' : 'editIngreso';
+          google.script.run
+            .withSuccessHandler(function() {
+              mostrarMsg('Guardado ✓', 'ok');
+              cargarHistorial();
+            })
+            .withFailureHandler(function(err) {
+              btnGuardar.disabled = false;
+              btnCancelar.disabled = false;
+              mostrarMsg('Error: ' + err.message, 'error');
+            })
+            [fn](mov.fila, fecha, categoria, descripcion, monto);
+        }
+
+        function onEliminar() {
+          const btn = tr.querySelector('button.eliminar');
           const descripcionCorta = mov.descripcion ? ('"' + mov.descripcion + '"') : 'este movimiento';
           if (!confirm('¿Eliminar ' + descripcionCorta + ' por ' + fmt(mov.monto) + '?')) return;
 
@@ -127,30 +219,70 @@
               mostrarMsg('Error: ' + err.message, 'error');
             })
             [fn](mov.fila);
-        });
+        }
 
+        renderVista();
         tbody.appendChild(tr);
       });
     }
 
+    const hoy = new Date();
+    let anioActual = hoy.getFullYear();
+    let mesActual = hoy.getMonth() + 1;
+    let categoriasGastos = [];
+    let categoriasIngresos = [];
+
     function cargarHistorial() {
-      const now = new Date();
-      document.getElementById('periodo').textContent = MESES[now.getMonth()] + ' ' + now.getFullYear();
+      document.getElementById('btnAnterior').disabled = true;
+      document.getElementById('btnSiguiente').disabled = true;
+      document.getElementById('periodo').textContent = MESES[mesActual - 1] + ' ' + anioActual;
 
       google.script.run
         .withSuccessHandler(function(gastos) {
-          pintarTabla(gastos, 'tablaGastos', 'vacioGastos', 'gasto');
+          pintarTabla(gastos, 'tablaGastos', 'vacioGastos', 'gasto', categoriasGastos);
+          actualizarBotones();
         })
-        .getGastos();
+        .getGastos(anioActual, mesActual);
 
       google.script.run
         .withSuccessHandler(function(ingresos) {
-          pintarTabla(ingresos, 'tablaIngresos', 'vacioIngresos', 'ingreso');
+          pintarTabla(ingresos, 'tablaIngresos', 'vacioIngresos', 'ingreso', categoriasIngresos);
+          actualizarBotones();
         })
-        .getIngresos();
+        .getIngresos(anioActual, mesActual);
     }
 
-    cargarHistorial();
+    function actualizarBotones() {
+      document.getElementById('btnAnterior').disabled = false;
+      const esMesActual = anioActual === hoy.getFullYear() && mesActual === (hoy.getMonth() + 1);
+      document.getElementById('btnSiguiente').disabled = esMesActual;
+    }
+
+    document.getElementById('btnAnterior').addEventListener('click', function() {
+      mesActual--;
+      if (mesActual < 1) { mesActual = 12; anioActual--; }
+      mostrarMsg('', '');
+      cargarHistorial();
+    });
+
+    document.getElementById('btnSiguiente').addEventListener('click', function() {
+      mesActual++;
+      if (mesActual > 12) { mesActual = 1; anioActual++; }
+      mostrarMsg('', '');
+      cargarHistorial();
+    });
+
+    function cargarCategoriasYHistorial() {
+      let pendientes = 2;
+      function listo() {
+        pendientes--;
+        if (pendientes === 0) cargarHistorial();
+      }
+      google.script.run.withSuccessHandler(function(cats) { categoriasGastos = cats; listo(); }).getCategorias();
+      google.script.run.withSuccessHandler(function(cats) { categoriasIngresos = cats; listo(); }).getCategoriasIngresos();
+    }
+
+    cargarCategoriasYHistorial();
   </script>
 </body>
 </html>
