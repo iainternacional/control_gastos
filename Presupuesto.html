@@ -3,97 +3,43 @@
 <head>
   <base target="_top">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: -apple-system, Roboto, Arial, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background: #f5f5f5;
-      color: #222;
-    }
-    h1 { font-size: 20px; margin: 0 0 6px; text-align: center; }
-    p.info { text-align: center; font-size: 13px; color: #666; margin: 0 0 12px; }
-    .nav-periodo { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 8px; }
-    .nav-periodo button {
-      padding: 8px 14px;
-      font-size: 13px;
-      font-weight: 600;
-      color: #2e7d32;
-      background: white;
-      border: 1px solid #2e7d32;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-    .nav-periodo button:disabled { color: #ccc; border-color: #ccc; cursor: default; }
-    #periodo { font-size: 14px; color: #666; min-width: 110px; text-align: center; }
-    #origen { text-align: center; font-size: 12px; color: #999; margin: 0 0 16px; }
-    .container { max-width: 420px; margin: 0 auto; }
-    ul { list-style: none; margin: 0; padding: 0; }
-    li {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      background: white;
-      border-radius: 10px;
-      padding: 12px 14px;
-      margin-bottom: 10px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    .nombre { flex: 1; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
-    input[type="number"] {
-      width: 120px;
-      padding: 10px;
-      font-size: 15px;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      text-align: right;
-    }
-    .vacio { text-align: center; color: #999; font-size: 13px; padding: 16px; background: white; border-radius: 10px; }
-    button#guardar {
-      width: 100%;
-      padding: 16px;
-      font-size: 17px;
-      font-weight: 600;
-      color: white;
-      background: #2e7d32;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
-      margin-top: 6px;
-    }
-    button#guardar:disabled { background: #999; }
-    #msg { text-align: center; font-size: 14px; min-height: 20px; margin-top: 10px; }
-    #msg.ok { color: #2e7d32; }
-    #msg.error { color: #c62828; }
-    nav { text-align: center; margin-top: 16px; }
-    nav a { color: #2e7d32; text-decoration: none; font-size: 14px; }
-  </style>
+  <?!= include('Stylesheet') ?>
 </head>
 <body>
-  <div class="container">
-    <h1>Presupuesto quincenal</h1>
-    <p class="info">Define el límite quincenal para cada categoría de gasto.</p>
-    <div class="nav-periodo">
-      <button id="btnAnterior" type="button">← Anterior</button>
-      <div id="periodo"></div>
-      <button id="btnSiguiente" type="button">Siguiente →</button>
-    </div>
-    <div id="origen"></div>
-
-    <ul id="lista"></ul>
-    <div class="vacio" id="vacio" style="display:none;">No hay categorías de gasto todavía</div>
-
-    <button id="guardar" style="display:none;">Guardar presupuesto</button>
-    <div id="msg"></div>
-
+  <header>
+    <h1>Control de Gastos</h1>
     <nav>
-      <a href="<?= appUrl ?>?page=form<?= authSuffix ?>">Registrar un gasto</a> ·
-      <a href="<?= appUrl ?>?page=ingreso<?= authSuffix ?>">Registrar un ingreso</a> ·
-      <a href="<?= appUrl ?>?page=resumen<?= authSuffix ?>">Ver resumen</a> ·
-      <a href="<?= appUrl ?>?page=categorias<?= authSuffix ?>">Gestionar categorías</a>
+      <a href="<?= appUrl ?>?page=form<?= authSuffix ?>">Gasto</a>
+      <a href="<?= appUrl ?>?page=ingreso<?= authSuffix ?>">Ingreso</a>
+      <a href="<?= appUrl ?>?page=resumen<?= authSuffix ?>">Resumen</a>
+      <a href="<?= appUrl ?>?page=historial<?= authSuffix ?>">Movimientos</a>
+      <a href="<?= appUrl ?>?page=categorias<?= authSuffix ?>">Categorías</a>
+      <a href="<?= appUrl ?>?page=presupuesto<?= authSuffix ?>" class="activo">Presupuesto</a>
+      <a href="<?= appUrl ?>?page=proyecciones<?= authSuffix ?>">Proyecciones</a>
     </nav>
-  </div>
+  </header>
+
+  <main>
+    <h2>Presupuesto quincenal</h2>
+    <p class="ayuda">Define el límite quincenal para cada categoría de gasto.</p>
+
+    <div class="periodo-nav">
+      <button class="btn secundario" id="btnAnterior" type="button">← Anterior</button>
+      <div class="periodo" id="periodo"></div>
+      <button class="btn secundario" id="btnSiguiente" type="button">Siguiente →</button>
+    </div>
+    <p class="ayuda" id="origen" style="text-align:center;"></p>
+
+    <div class="panel">
+      <div class="lista-presupuesto" id="lista"></div>
+      <div class="vacio" id="vacio" style="display:none;">No hay categorías de gasto todavía</div>
+    </div>
+
+    <div class="panel angosto" style="background:none;border:0;padding:0;">
+      <button class="btn ancho" id="guardar" style="display:none;">Guardar presupuesto</button>
+      <div id="msg"></div>
+    </div>
+  </main>
 
   <script>
     const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -132,10 +78,10 @@
           }
 
           const detalle = resultado.detalle;
-          const ul = document.getElementById('lista');
+          const lista = document.getElementById('lista');
           const vacio = document.getElementById('vacio');
           const guardar = document.getElementById('guardar');
-          ul.innerHTML = '';
+          lista.innerHTML = '';
 
           if (detalle.length === 0) {
             vacio.style.display = 'block';
@@ -146,7 +92,8 @@
           guardar.style.display = 'block';
 
           detalle.forEach(function(item) {
-            const li = document.createElement('li');
+            const fila = document.createElement('div');
+            fila.className = 'item-presupuesto';
 
             const nombre = document.createElement('span');
             nombre.className = 'nombre';
@@ -159,9 +106,9 @@
             input.value = item.limite;
             input.dataset.categoria = item.categoria;
 
-            li.appendChild(nombre);
-            li.appendChild(input);
-            ul.appendChild(li);
+            fila.appendChild(nombre);
+            fila.appendChild(input);
+            lista.appendChild(fila);
           });
         })
         .withFailureHandler(function(err) {

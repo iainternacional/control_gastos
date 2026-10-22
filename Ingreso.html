@@ -3,85 +3,58 @@
 <head>
   <base target="_top">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: -apple-system, Roboto, Arial, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background: #f5f5f5;
-      color: #222;
-    }
-    h1 { font-size: 20px; margin: 0 0 20px; text-align: center; }
-    form {
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-      max-width: 420px;
-      margin: 0 auto;
-    }
-    label { font-size: 14px; font-weight: 600; }
-    input, select {
-      width: 100%;
-      padding: 14px;
-      font-size: 16px;
-      border: 1px solid #ccc;
-      border-radius: 10px;
-      background: white;
-    }
-    button {
-      padding: 16px;
-      font-size: 17px;
-      font-weight: 600;
-      color: white;
-      background: #2e7d32;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
-    }
-    button:active { background: #1b5e20; }
-    button:disabled { background: #999; }
-    #msg { text-align: center; font-size: 14px; min-height: 20px; }
-    #msg.ok { color: #2e7d32; }
-    #msg.error { color: #c62828; }
-    nav { text-align: center; margin-top: 16px; }
-    nav a { color: #2e7d32; text-decoration: none; font-size: 14px; }
-  </style>
+  <?!= include('Stylesheet') ?>
 </head>
 <body>
-  <h1>Registrar ingreso</h1>
-  <form id="form">
-    <div>
-      <label for="fecha">Fecha</label>
-      <input type="date" id="fecha" required>
+  <header>
+    <h1>Control de Gastos</h1>
+    <nav>
+      <a href="<?= appUrl ?>?page=form<?= authSuffix ?>">Gasto</a>
+      <a href="<?= appUrl ?>?page=ingreso<?= authSuffix ?>" class="activo">Ingreso</a>
+      <a href="<?= appUrl ?>?page=resumen<?= authSuffix ?>">Resumen</a>
+      <a href="<?= appUrl ?>?page=historial<?= authSuffix ?>">Movimientos</a>
+      <a href="<?= appUrl ?>?page=categorias<?= authSuffix ?>">Categorías</a>
+      <a href="<?= appUrl ?>?page=presupuesto<?= authSuffix ?>">Presupuesto</a>
+      <a href="<?= appUrl ?>?page=proyecciones<?= authSuffix ?>">Proyecciones</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="panel angosto">
+      <h2>Registrar ingreso</h2>
+      <form id="form">
+        <div class="fila-campos">
+          <div class="campo">
+            <label for="fecha">Fecha</label>
+            <input type="date" id="fecha" required>
+          </div>
+          <div class="campo">
+            <label for="categoria">Categoría</label>
+            <select id="categoria" required></select>
+          </div>
+          <div class="campo">
+            <label for="monto">Monto</label>
+            <input type="number" id="monto" min="0" step="0.01" placeholder="0" required>
+          </div>
+        </div>
+        <div id="nuevaCategoriaBox" style="display:none;">
+          <div class="campo">
+            <label for="nuevaCategoriaInput">Nombre de la categoría nueva</label>
+            <input type="text" id="nuevaCategoriaInput" placeholder="Ej: Bono">
+          </div>
+          <div class="campo">
+            <button type="button" class="btn secundario" id="btnGuardarCategoria">Agregar categoría</button>
+          </div>
+        </div>
+        <div class="campo">
+          <label for="descripcion">Descripción</label>
+          <input type="text" id="descripcion" placeholder="Ej: Quincena de septiembre" required>
+        </div>
+        <button type="submit" class="btn ancho" id="submitBtn">Guardar ingreso</button>
+        <div id="msg"></div>
+      </form>
     </div>
-    <div>
-      <label for="categoria">Categoría</label>
-      <select id="categoria" required></select>
-    </div>
-    <div id="nuevaCategoriaBox" style="display:none;">
-      <label for="nuevaCategoriaInput">Nombre de la categoría nueva</label>
-      <input type="text" id="nuevaCategoriaInput" placeholder="Ej: Bono">
-      <button type="button" id="btnGuardarCategoria">Agregar categoría</button>
-    </div>
-    <div>
-      <label for="descripcion">Descripción</label>
-      <input type="text" id="descripcion" placeholder="Ej: Quincena de septiembre" required>
-    </div>
-    <div>
-      <label for="monto">Monto</label>
-      <input type="number" id="monto" min="0" step="0.01" placeholder="0" required>
-    </div>
-    <button type="submit" id="submitBtn">Guardar ingreso</button>
-    <div id="msg"></div>
-  </form>
-  <nav>
-    <a href="<?= appUrl ?>?page=form<?= authSuffix ?>">Registrar un gasto</a> ·
-    <a href="<?= appUrl ?>?page=resumen<?= authSuffix ?>">Ver resumen del mes</a> ·
-    <a href="<?= appUrl ?>?page=historial<?= authSuffix ?>">Ver/eliminar movimientos</a> ·
-    <a href="<?= appUrl ?>?page=categorias<?= authSuffix ?>">Gestionar categorías</a> ·
-    <a href="<?= appUrl ?>?page=presupuesto<?= authSuffix ?>">Editar presupuesto</a>
-  </nav>
+  </main>
 
   <script>
     document.getElementById('fecha').valueAsDate = new Date();

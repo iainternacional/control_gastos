@@ -3,109 +3,49 @@
 <head>
   <base target="_top">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: -apple-system, Roboto, Arial, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background: #f5f5f5;
-      color: #222;
-    }
-    h1 { font-size: 20px; margin: 0 0 4px; text-align: center; }
-    .container { max-width: 480px; margin: 0 auto; }
-    h2 { font-size: 15px; margin: 20px 0 8px; }
-    ul { list-style: none; margin: 0; padding: 0; background: white; border-radius: 10px; overflow: hidden; }
-    li {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 12px;
-      border-bottom: 1px solid #eee;
-      font-size: 14px;
-    }
-    li:last-child { border-bottom: none; }
-    .nombre { flex: 1; overflow-wrap: anywhere; }
-    .nombre input {
-      width: 100%;
-      padding: 8px;
-      font-size: 14px;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-    }
-    button.icono {
-      border: none;
-      background: none;
-      font-size: 15px;
-      cursor: pointer;
-      padding: 4px 8px;
-      line-height: 1;
-    }
-    button.editar { color: #2e7d32; }
-    button.eliminar { color: #c62828; }
-    button.icono:disabled { color: #ccc; cursor: default; }
-    .vacio { text-align: center; color: #999; font-size: 13px; padding: 16px; background: white; border-radius: 10px; }
-    .agregar {
-      display: flex;
-      gap: 8px;
-      margin-top: 10px;
-    }
-    .agregar input {
-      flex: 1;
-      padding: 12px;
-      font-size: 14px;
-      border: 1px solid #ccc;
-      border-radius: 10px;
-      background: white;
-    }
-    .agregar button {
-      padding: 12px 16px;
-      font-size: 14px;
-      font-weight: 600;
-      color: white;
-      background: #2e7d32;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
-    }
-    .agregar button:disabled { background: #999; }
-    #msg { text-align: center; font-size: 14px; min-height: 20px; margin-top: 12px; }
-    #msg.ok { color: #2e7d32; }
-    #msg.error { color: #c62828; }
-    nav { text-align: center; margin-top: 16px; }
-    nav a { color: #2e7d32; text-decoration: none; font-size: 14px; }
-  </style>
+  <?!= include('Stylesheet') ?>
 </head>
 <body>
-  <div class="container">
-    <h1>Categorías</h1>
+  <header>
+    <h1>Control de Gastos</h1>
+    <nav>
+      <a href="<?= appUrl ?>?page=form<?= authSuffix ?>">Gasto</a>
+      <a href="<?= appUrl ?>?page=ingreso<?= authSuffix ?>">Ingreso</a>
+      <a href="<?= appUrl ?>?page=resumen<?= authSuffix ?>">Resumen</a>
+      <a href="<?= appUrl ?>?page=historial<?= authSuffix ?>">Movimientos</a>
+      <a href="<?= appUrl ?>?page=categorias<?= authSuffix ?>" class="activo">Categorías</a>
+      <a href="<?= appUrl ?>?page=presupuesto<?= authSuffix ?>">Presupuesto</a>
+      <a href="<?= appUrl ?>?page=proyecciones<?= authSuffix ?>">Proyecciones</a>
+    </nav>
+  </header>
 
-    <h2>Categorías de gastos</h2>
-    <ul id="listaGastos"></ul>
-    <div class="vacio" id="vacioGastos" style="display:none;">Sin categorías de gastos</div>
-    <div class="agregar">
-      <input type="text" id="nuevaGasto" placeholder="Nueva categoría de gasto">
-      <button id="btnAgregarGasto">Agregar</button>
-    </div>
+  <main>
+    <h2>Categorías</h2>
 
-    <h2>Categorías de ingreso</h2>
-    <ul id="listaIngresos"></ul>
-    <div class="vacio" id="vacioIngresos" style="display:none;">Sin categorías de ingreso</div>
-    <div class="agregar">
-      <input type="text" id="nuevaIngreso" placeholder="Nueva categoría de ingreso">
-      <button id="btnAgregarIngreso">Agregar</button>
+    <div class="dos-col">
+      <div class="panel">
+        <h3>Categorías de gastos</h3>
+        <ul class="lista-categorias" id="listaGastos"></ul>
+        <div class="vacio" id="vacioGastos" style="display:none;">Sin categorías de gastos</div>
+        <div class="agregar">
+          <input type="text" id="nuevaGasto" placeholder="Nueva categoría de gasto">
+          <button class="btn" id="btnAgregarGasto">Agregar</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Categorías de ingreso</h3>
+        <ul class="lista-categorias" id="listaIngresos"></ul>
+        <div class="vacio" id="vacioIngresos" style="display:none;">Sin categorías de ingreso</div>
+        <div class="agregar">
+          <input type="text" id="nuevaIngreso" placeholder="Nueva categoría de ingreso">
+          <button class="btn" id="btnAgregarIngreso">Agregar</button>
+        </div>
+      </div>
     </div>
 
     <div id="msg"></div>
-
-    <nav>
-      <a href="<?= appUrl ?>?page=form<?= authSuffix ?>">Registrar un gasto</a> ·
-      <a href="<?= appUrl ?>?page=ingreso<?= authSuffix ?>">Registrar un ingreso</a> ·
-      <a href="<?= appUrl ?>?page=resumen<?= authSuffix ?>">Ver resumen</a> ·
-      <a href="<?= appUrl ?>?page=historial<?= authSuffix ?>">Ver/eliminar movimientos</a> ·
-      <a href="<?= appUrl ?>?page=presupuesto<?= authSuffix ?>">Editar presupuesto</a>
-    </nav>
-  </div>
+  </main>
 
   <script>
     function mostrarMsg(texto, clase) {

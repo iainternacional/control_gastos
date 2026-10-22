@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://www.gstatic.com/charts/loader.js"></script>
+  <?!= include('Stylesheet') ?>
+</head>
+<body>
+  <header>
+    <h1>Control de Gastos</h1>
+    <nav>
+      <a href="<?= appUrl ?>?page=form<?= authSuffix ?>">Gasto</a>
+      <a href="<?= appUrl ?>?page=ingreso<?= authSuffix ?>">Ingreso</a>
+      <a href="<?= appUrl ?>?page=resumen<?= authSuffix ?>">Resumen</a>
+      <a href="<?= appUrl ?>?page=historial<?= authSuffix ?>">Movimientos</a>
+      <a href="<?= appUrl ?>?page=categorias<?= authSuffix ?>">Categorías</a>
+      <a href="<?= appUrl ?>?page=presupuesto<?= authSuffix ?>">Presupuesto</a>
+      <a href="<?= appUrl ?>?page=proyecciones<?= authSuffix ?>" class="activo">Proyecciones</a>
+    </nav>
+  </header>
+
+  <main>
+    <h2>Proyecciones</h2>
+    <p class="ayuda" id="baseAyuda">Cargando datos...</p>
+
+    <div class="panel">
+      <h3 id="tituloCierre">Cierre del mes</h3>
+      <div class="rejilla" style="margin-bottom:0;">
+        <div class="tarjeta">
+          <div class="etiqueta">Gastado hasta hoy</div>
+          <div class="valor" id="cGastado">—</div>
+        </div>
+        <div class="tarjeta">
+          <div class="etiqueta">Gasto proyectado al cierre</div>
+          <div class="valor" id="cGastoProy">—</div>
+        </div>
+        <div class="tarjeta">
+          <div class="etiqueta">Ingreso estimado del mes</div>
+          <div class="valor" id="cIngreso">—</div>
+        </div>
+        <div class="tarjeta destacada">
+          <div class="etiqueta">Disponible proyectado</div>
+          <div class="valor" id="cDisponible">—</div>
+        </div>
+      </div>
+      <p class="ayuda" id="cierreAyuda"></p>
+    </div>
+
+    <div class="dos-col">
+      <div class="panel">
+        <h3>Qué pasa si...</h3>
+        <p class="ayuda">Cambia un porcentaje y verás el efecto en los próximos meses y en la meta. Usa valores negativos para recortar.</p>
+        <div class="campo" style="margin-top:12px;">
+          <label for="ajusteIngreso">Ingreso mensual (% de cambio)</label>
+          <input type="number" id="ajusteIngreso" value="0" step="5" min="-100">
+        </div>
+        <div class="tabla-wrap">
+          <table class="tabla-tarjetas">
+            <thead>
+              <tr><th>Categoría</th><th class="num">Promedio</th><th class="num">% cambio</th><th class="num">Estimado</th></tr>
+            </thead>
+            <tbody id="tablaEscenario"></tbody>
+          </table>
+        </div>
+        <div class="vacio" id="vacioEscenario" style="display:none;">Aún no hay gastos en los últimos 3 meses para proyectar</div>
+        <div class="acciones" style="margin-top:12px;">
+          <button class="btn secundario" id="btnRestablecer" type="button">Restablecer</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Meta de ahorro</h3>
+        <div class="fila-campos">
+          <div class="campo">
+            <label for="metaMonto">Monto de la meta</label>
+            <input type="number" id="metaMonto" min="0" step="1000" placeholder="0">
+          </div>
+          <div class="campo">
+            <label for="ahorroInicial">Ahorro actual (opcional)</label>
+            <input type="number" id="ahorroInicial" min="0" step="1000" placeholder="0">
+          </div>
+        </div>
+        <div class="rejilla" style="margin-bottom:0;">
+          <div class="tarjeta">
+            <div class="etiqueta">Ahorro mensual estimado</div>
+            <div class="valor" id="mAhorro">—</div>
+          </div>
+        </div>
+        <p id="metaResultado" style="margin-top:12px;font-weight:600;"></p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="periodo-nav" style="margin-bottom:12px;">
+        <h3 style="margin:0;">Próximos meses</h3>
+        <select id="horizonte" style="width:auto;">
+          <option value="3">3 meses</option>
+          <option value="6" selected>6 meses</option>
+          <option value="12">12 meses</option>
+        </select>
+      </div>
+      <div class="grafico" id="chartProyeccion"></div>
+      <div class="tabla-wrap">
+        <table class="tabla-tarjetas">
+          <thead>
+            <tr><th>Mes</th><th class="num">Ingresos</th><th class="num">Gastos</th><th class="num">Ahorro</th><th class="num">Acumulado</th></tr>
+          </thead>
+          <tbody id="tablaProyeccion"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    google.charts.load('current', { packages: ['corechart'] });
+    google.charts.setOnLoadCallback(function() { graficasListas = true; recalcular(); });
+
+    const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const fmt = n => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+    const esc = s => String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const num = id => Number(document.getElementById(id).value) || 0;
+
+    let base = null;
+    let graficasListas = false;
+    let filasProyeccion = [];
+    let timerResize = null;
+
+    function ajusteCategoria(input) {
+      return Math.max(-100, Number(input.value) || 0);
+    }
+
+    function calcularEscenario() {
+      let gastos = 0;
+      document.querySelectorAll('#tablaEscenario input').forEach(function(input) {
+        const promedio = base.promedioCategorias[input.dataset.categoria] || 0;
+        const estimado = promedio * (1 + ajusteCategoria(input) / 100);
+        input.closest('tr').querySelector('.estimado').textContent = fmt(estimado);
+        gastos += estimado;
+      });
+      const ingresos = base.promedioIngresos * (1 + Math.max(-100, num('ajusteIngreso')) / 100);
+      return { ingresos: ingresos, gastos: gastos, ahorro: ingresos - gastos };
+    }
+
+    function recalcular() {
+      if (!base) return;
+      const esc_ = calcularEscenario();
+      document.getElementById('mAhorro').textContent = fmt(esc_.ahorro);
+      document.getElementById('mAhorro').className = 'valor' + (esc_.ahorro < 0 ? ' negativo' : '');
+
+      const inicial = num('ahorroInicial');
+      const horizonte = Number(document.getElementById('horizonte').value);
+      const hoy = new Date();
+      const tbody = document.getElementById('tablaProyeccion');
+      tbody.innerHTML = '';
+      filasProyeccion = [];
+      let acumulado = inicial;
+      for (let i = 1; i <= horizonte; i++) {
+        const d = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1);
+        acumulado += esc_.ahorro;
+        const etiqueta = MESES[d.getMonth()] + ' ' + d.getFullYear();
+        filasProyeccion.push([MESES[d.getMonth()].substring(0, 3) + ' ' + String(d.getFullYear()).slice(-2), esc_.ingresos, esc_.gastos, acumulado]);
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td data-label="Mes">' + etiqueta + '</td>' +
+          '<td class="num" data-label="Ingresos">' + fmt(esc_.ingresos) + '</td>' +
+          '<td class="num" data-label="Gastos">' + fmt(esc_.gastos) + '</td>' +
+          '<td class="num' + (esc_.ahorro < 0 ? ' over' : '') + '" data-label="Ahorro">' + fmt(esc_.ahorro) + '</td>' +
+          '<td class="num' + (acumulado < 0 ? ' over' : '') + '" data-label="Acumulado">' + fmt(acumulado) + '</td>';
+        tbody.appendChild(tr);
+      }
+
+      const meta = num('metaMonto');
+      const resultado = document.getElementById('metaResultado');
+      if (!meta) {
+        resultado.textContent = '';
+      } else if (inicial >= meta) {
+        resultado.textContent = 'Ya alcanzaste esta meta con tu ahorro actual.';
+      } else if (esc_.ahorro <= 0) {
+        resultado.textContent = 'Con este ritmo no logras ahorrar; ajusta los porcentajes para ver cuándo llegarías.';
+      } else {
+        const meses = Math.ceil((meta - inicial) / esc_.ahorro);
+        const llegada = new Date(hoy.getFullYear(), hoy.getMonth() + meses, 1);
+        resultado.textContent = 'Alcanzarías la meta en ' + meses + (meses === 1 ? ' mes' : ' meses') +
+          ' (' + MESES[llegada.getMonth()] + ' ' + llegada.getFullYear() + ').';
+      }
+
+      dibujarProyeccion();
+    }
+
+    function dibujarProyeccion() {
+      if (!graficasListas || !filasProyeccion.length) return;
+      new google.visualization.ComboChart(document.getElementById('chartProyeccion')).draw(
+        google.visualization.arrayToDataTable([['Mes', 'Ingresos', 'Gastos', 'Ahorro acumulado']].concat(filasProyeccion)),
+        {
+          seriesType: 'bars',
+          series: { 2: { type: 'line', pointSize: 5, lineWidth: 3 } },
+          colors: ['#2e7d32', '#ef6c00', '#1f4e79'],
+          legend: { position: 'top', textStyle: { fontSize: 12 } },
+          chartArea: { width: '85%', height: '70%' },
+          vAxis: { format: 'short', textStyle: { fontSize: 11 } },
+          hAxis: { textStyle: { fontSize: 11 } }
+        }
+      );
+    }
+
+    function pintarBase(datos) {
+      base = datos;
+      const mc = datos.mesActual;
+
+      document.getElementById('baseAyuda').textContent = datos.mesesBase
+        ? 'Basado en el promedio de ' + datos.mesesBase + (datos.mesesBase === 1 ? ' mes' : ' meses') + ' completos con movimientos (máximo los últimos 3).'
+        : 'Aún no hay meses completos con movimientos; las proyecciones usarán solo lo del mes en curso.';
+
+      document.getElementById('tituloCierre').textContent = 'Cierre de ' + MESES[mc.mes - 1] + ' ' + mc.anio;
+      document.getElementById('cGastado').textContent = fmt(mc.gastado);
+      document.getElementById('cGastoProy').textContent = fmt(mc.gastoProyectado);
+      document.getElementById('cIngreso').textContent = fmt(mc.ingresoEstimado);
+      const disp = document.getElementById('cDisponible');
+      disp.textContent = fmt(mc.disponibleProyectado);
+      disp.className = 'valor' + (mc.disponibleProyectado < 0 ? ' negativo' : '');
+      document.getElementById('cierreAyuda').textContent =
+        'Llevas ' + mc.diasTranscurridos + ' de ' + mc.diasMes + ' días; el gasto proyectado mantiene tu ritmo actual. ' +
+        'El ingreso estimado es el mayor entre lo ya recibido y tu promedio.';
+
+      const categorias = Object.keys(datos.promedioCategorias)
+        .sort(function(a, b) { return datos.promedioCategorias[b] - datos.promedioCategorias[a]; });
+      const tbody = document.getElementById('tablaEscenario');
+      tbody.innerHTML = '';
+      document.getElementById('vacioEscenario').style.display = categorias.length ? 'none' : 'block';
+      categorias.forEach(function(cat) {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td data-label="Categoría">' + esc(cat) + '</td>' +
+          '<td class="num" data-label="Promedio">' + fmt(datos.promedioCategorias[cat]) + '</td>' +
+          '<td class="num" data-label="% cambio"><input type="number" value="0" step="5" min="-100" style="width:90px;text-align:right;" data-categoria="' + esc(cat) + '"></td>' +
+          '<td class="num estimado" data-label="Estimado"></td>';
+        tbody.appendChild(tr);
+      });
+
+      recalcular();
+    }
+
+    document.addEventListener('input', function(e) {
+      if (e.target.closest && (e.target.closest('#tablaEscenario') || ['ajusteIngreso', 'metaMonto', 'ahorroInicial'].indexOf(e.target.id) !== -1)) {
+        recalcular();
+      }
+    });
+    document.getElementById('horizonte').addEventListener('change', recalcular);
+
+    document.getElementById('btnRestablecer').addEventListener('click', function() {
+      document.getElementById('ajusteIngreso').value = 0;
+      document.querySelectorAll('#tablaEscenario input').forEach(function(input) { input.value = 0; });
+      recalcular();
+    });
+
+    window.addEventListener('resize', function() {
+      clearTimeout(timerResize);
+      timerResize = setTimeout(dibujarProyeccion, 200);
+    });
+
+    google.script.run
+      .withSuccessHandler(pintarBase)
+      .withFailureHandler(function(err) {
+        document.getElementById('baseAyuda').textContent = 'Error: ' + err.message;
+      })
+      .getProyecciones();
+  </script>
+</body>
+</html>

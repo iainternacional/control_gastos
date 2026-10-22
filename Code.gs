@@ -32,7 +32,7 @@ const CATEGORIAS_INGRESOS_DEFAULT = [
 
 function doGet(e) {
   const param = e && e.parameter && e.parameter.page;
-  const page = param === 'resumen' ? 'Resumen' : param === 'ingreso' ? 'Ingreso' : param === 'historial' ? 'Historial' : param === 'categorias' ? 'Categorias' : param === 'presupuesto' ? 'Presupuesto' : 'Formulario';
+  const page = param === 'resumen' ? 'Resumen' : param === 'ingreso' ? 'Ingreso' : param === 'historial' ? 'Historial' : param === 'categorias' ? 'Categorias' : param === 'presupuesto' ? 'Presupuesto' : param === 'proyecciones' ? 'Proyecciones' : 'Formulario';
   const authuser = e && e.parameter && e.parameter.authuser;
   const template = HtmlService.createTemplateFromFile(page);
   template.appUrl = APP_URL;
@@ -270,11 +270,193 @@ function getResumen(anio, mes) {
   return { anio: y, mes: m, total, totalIngresos, disponible, porcentajeGastado, detalle };
 }
 
+// Base de las proyecciones: promedio de los últimos 3 meses completos (solo los que tienen
+// movimientos) y ritmo del mes en curso. Las proyecciones a futuro se calculan en el cliente.
+function getProyecciones() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+
+  const base = [];
+  const indice = {};
+  for (let i = 3; i >= 1; i--) {
+    const d = new Date(y, m - 1 - i, 1);
+    const item = { anio: d.getFullYear(), mes: d.getMonth() + 1, ingresos: 0, gastos: 0, porCategoria: {} };
+    indice[item.anio * 12 + item.mes] = item;
+    base.push(item);
+  }
+  const claveActual = y * 12 + m;
+  const actual = { ingresos: 0, gastos: 0 };
+
+  const ss = getSheet();
+  [['Gastos', 'gastos'], ['Ingresos', 'ingresos']].forEach(par => {
+    const sheet = ss.getSheetByName(par[0]);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return;
+    sheet.getRange(2, 1, lastRow - 1, 4).getValues().forEach(row => {
+      const fecha = row[0];
+      if (!(fecha instanceof Date)) return;
+      const monto = Number(row[3]) || 0;
+      const clave = fecha.getFullYear() * 12 + fecha.getMonth() + 1;
+      const item = indice[clave];
+      if (item) {
+        item[par[1]] += monto;
+        if (par[1] === 'gastos') item.porCategoria[row[1]] = (item.porCategoria[row[1]] || 0) + monto;
+      } else if (clave === claveActual) {
+        actual[par[1]] += monto;
+      }
+    });
+  });
+
+  const conDatos = base.filter(b => b.gastos > 0 || b.ingresos > 0);
+  const n = conDatos.length;
+  const promedioCategorias = {};
+  let sumaIngresos = 0;
+  let sumaGastos = 0;
+  conDatos.forEach(b => {
+    sumaIngresos += b.ingresos;
+    sumaGastos += b.gastos;
+    Object.keys(b.porCategoria).forEach(cat => {
+      promedioCategorias[cat] = (promedioCategorias[cat] || 0) + b.porCategoria[cat];
+    });
+  });
+  Object.keys(promedioCategorias).forEach(cat => { promedioCategorias[cat] = promedioCategorias[cat] / n; });
+
+  const promedioIngresos = n ? sumaIngresos / n : 0;
+  const promedioGastos = n ? sumaGastos / n : 0;
+  const diasMes = new Date(y, m, 0).getDate();
+  const diasTranscurridos = now.getDate();
+  const gastoProyectado = actual.gastos / diasTranscurridos * diasMes;
+  const ingresoEstimado = Math.max(actual.ingresos, promedioIngresos);
+
+  return {
+    mesesBase: n,
+    promedioIngresos,
+    promedioGastos,
+    promedioCategorias,
+    mesActual: {
+      anio: y,
+      mes: m,
+      diasTranscurridos,
+      diasMes,
+      gastado: actual.gastos,
+      ingresado: actual.ingresos,
+      gastoProyectado,
+      ingresoEstimado,
+      disponibleProyectado: ingresoEstimado - gastoProyectado
+    }
+  };
+}
+
+// Ingresos, gastos y disponible de los últimos `cantidad` meses, terminando en anio/mes.
+function getTendencia(anio, mes, cantidad) {
+  const now = new Date();
+  const y = anio || now.getFullYear();
+  const m = mes || (now.getMonth() + 1);
+  const n = cantidad || 6;
+
+  const meses = [];
+  const indice = {};
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(y, m - 1 - i, 1);
+    const item = { anio: d.getFullYear(), mes: d.getMonth() + 1, ingresos: 0, gastos: 0, disponible: 0 };
+    indice[item.anio * 12 + item.mes] = item;
+    meses.push(item);
+  }
+
+  const ss = getSheet();
+  [['Gastos', 'gastos'], ['Ingresos', 'ingresos']].forEach(par => {
+    const sheet = ss.getSheetByName(par[0]);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return;
+    sheet.getRange(2, 1, lastRow - 1, 4).getValues().forEach(row => {
+      const fecha = row[0];
+      if (!(fecha instanceof Date)) return;
+      const item = indice[fecha.getFullYear() * 12 + fecha.getMonth() + 1];
+      if (item) item[par[1]] += Number(row[3]) || 0;
+    });
+  });
+
+  meses.forEach(item => { item.disponible = item.ingresos - item.gastos; });
+  return meses;
+}
+
+function parseFechaLocal(str, finDelDia) {
+  const p = String(str).split('-').map(Number);
+  if (p.length !== 3 || p.some(isNaN)) throw new Error('Fecha inválida');
+  return finDelDia
+    ? new Date(p[0], p[1] - 1, p[2], 23, 59, 59, 999)
+    : new Date(p[0], p[1] - 1, p[2]);
+}
+
+function sumarPorRango(sheet, desde, hasta) {
+  const lastRow = sheet.getLastRow();
+  const data = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 4).getValues() : [];
+
+  const totales = {};
+  let total = 0;
+
+  data.forEach(row => {
+    const fecha = row[0];
+    if (!(fecha instanceof Date) || fecha < desde || fecha > hasta) return;
+    const monto = Number(row[3]) || 0;
+    totales[row[1]] = (totales[row[1]] || 0) + monto;
+    total += monto;
+  });
+
+  return { totales, total };
+}
+
+// Filtra los gastos por rango de fechas y, opcionalmente, por categorías.
+// Los ingresos siempre cuentan completos en el rango (no tienen categoría de gasto).
+function getResumenRango(desde, hasta, categorias) {
+  const d = parseFechaLocal(desde, false);
+  const h = parseFechaLocal(hasta, true);
+  if (d > h) throw new Error('La fecha "desde" no puede ser posterior a "hasta"');
+
+  const ss = getSheet();
+  const gastos = sumarPorRango(ss.getSheetByName('Gastos'), d, h);
+  const ingresos = sumarPorRango(ss.getSheetByName('Ingresos'), d, h);
+
+  const seleccion = categorias && categorias.length ? categorias : null;
+  const actuales = getCategorias();
+  const huerfanas = Object.keys(gastos.totales).filter(cat => actuales.indexOf(cat) === -1);
+  let lista = actuales.concat(huerfanas);
+  if (seleccion) lista = lista.filter(cat => seleccion.indexOf(cat) !== -1);
+
+  const mismoMes = d.getFullYear() === h.getFullYear() && d.getMonth() === h.getMonth();
+  const presupuesto = mismoMes ? getPresupuesto(d.getFullYear(), d.getMonth() + 1) : {};
+
+  const totalIngresos = ingresos.total;
+  const detalle = lista.map(cat => {
+    const gastado = gastos.totales[cat] || 0;
+    return {
+      categoria: cat,
+      gastado: gastado,
+      presupuesto: presupuesto[cat] || 0,
+      porcentajeIngreso: totalIngresos > 0 ? (gastado / totalIngresos * 100) : null
+    };
+  });
+
+  const total = detalle.reduce((suma, item) => suma + item.gastado, 0);
+  return {
+    total,
+    totalIngresos,
+    disponible: totalIngresos - gastos.total,
+    porcentajeGastado: totalIngresos > 0 ? (total / totalIngresos * 100) : null,
+    presupuestoAplica: mismoMes,
+    detalle
+  };
+}
+
 function movimientosDelMes(nombreHoja, anio, mes) {
   const now = new Date();
   const y = anio || now.getFullYear();
   const m = mes || (now.getMonth() + 1);
+  return movimientosEnRango(nombreHoja, new Date(y, m - 1, 1), new Date(y, m, 0, 23, 59, 59, 999));
+}
 
+function movimientosEnRango(nombreHoja, desde, hasta) {
   const sheet = getSheet().getSheetByName(nombreHoja);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
@@ -285,7 +467,7 @@ function movimientosDelMes(nombreHoja, anio, mes) {
   data.forEach((row, i) => {
     const fecha = row[0];
     if (!(fecha instanceof Date)) return;
-    if (fecha.getFullYear() === y && fecha.getMonth() + 1 === m) {
+    if (fecha >= desde && fecha <= hasta) {
       movimientos.push({
         fila: i + 2,
         fecha: fecha.toISOString(),
@@ -306,6 +488,37 @@ function getGastos(anio, mes) {
 
 function getIngresos(anio, mes) {
   return movimientosDelMes('Ingresos', anio, mes);
+}
+
+function getMovimientosRango(desde, hasta) {
+  const d = parseFechaLocal(desde, false);
+  const h = parseFechaLocal(hasta, true);
+  if (d > h) throw new Error('La fecha "desde" no puede ser posterior a "hasta"');
+  return {
+    gastos: movimientosEnRango('Gastos', d, h),
+    ingresos: movimientosEnRango('Ingresos', d, h)
+  };
+}
+
+function getSaldoInicial() {
+  return Number(PropertiesService.getScriptProperties().getProperty('SALDO_INICIAL')) || 0;
+}
+
+function setSaldoInicial(valor) {
+  const n = Number(valor);
+  if (!isFinite(n) || n < 0) throw new Error('El saldo inicial debe ser un número mayor o igual a 0');
+  PropertiesService.getScriptProperties().setProperty('SALDO_INICIAL', String(n));
+  return { ok: true, saldoInicial: n };
+}
+
+// Saldo real en caja: saldo inicial + todos los ingresos − todos los gastos hasta `hasta` (inclusive).
+function getSaldoAcumulado(hasta) {
+  const fin = parseFechaLocal(hasta, true);
+  const ss = getSheet();
+  const ingresos = sumarPorRango(ss.getSheetByName('Ingresos'), new Date(0), fin).total;
+  const gastos = sumarPorRango(ss.getSheetByName('Gastos'), new Date(0), fin).total;
+  const saldoInicial = getSaldoInicial();
+  return { hasta: hasta, saldoInicial: saldoInicial, saldoAcumulado: saldoInicial + ingresos - gastos };
 }
 
 function eliminarFila(nombreHoja, fila) {
