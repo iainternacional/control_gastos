@@ -42,6 +42,10 @@
           <select id="fCategoria"><option value="">Todas</option></select>
         </div>
         <div class="campo">
+          <label for="fSubcategoria">Subcategoría (gastos)</label>
+          <select id="fSubcategoria"><option value="">Todas</option></select>
+        </div>
+        <div class="campo">
           <label for="fTexto">Buscar en descripción</label>
           <input type="text" id="fTexto" placeholder="Ej: pollo">
         </div>
@@ -104,6 +108,17 @@
       msg.className = clase;
     }
 
+    let subcategorias = {};
+
+    function opcionesSub(cat, actual) {
+      const subs = (subcategorias[cat] || []).slice();
+      if (actual && subs.indexOf(actual) === -1) subs.push(actual);
+      subs.sort(function(a, b) { return a.localeCompare(b, 'es', { sensitivity: 'base' }); });
+      return '<option value="">Sin subcategoría</option>' + subs.map(function(s) {
+        return '<option value="' + esc(s) + '"' + (s === actual ? ' selected' : '') + '>' + esc(s) + '</option>';
+      }).join('');
+    }
+
     function pintarTabla(movimientos, tbodyId, vacioId, tipo, categorias) {
       const tbody = document.getElementById(tbodyId);
       const vacio = document.getElementById(vacioId);
@@ -121,7 +136,8 @@
         function renderVista() {
           tr.innerHTML =
             '<td data-label="Fecha">' + fmtFecha(mov.fecha) + '</td>' +
-            '<td data-label="Categoría">' + esc(mov.categoria) + '</td>' +
+            '<td data-label="Categoría">' + esc(mov.categoria) +
+              (mov.subcategoria ? '<div class="ayuda" style="margin:0;">' + esc(mov.subcategoria) + '</div>' : '') + '</td>' +
             '<td data-label="Descripción">' + esc(mov.descripcion) + '</td>' +
             '<td class="num" data-label="Monto">' + fmt(mov.monto) + '</td>' +
             '<td class="acc">' +
@@ -143,7 +159,8 @@
 
           tr.innerHTML =
             '<td data-label="Fecha"><input type="date" class="e-fecha" value="' + fmtFechaInput(mov.fecha) + '"></td>' +
-            '<td data-label="Categoría"><select class="e-categoria">' + opciones + '</select></td>' +
+            '<td data-label="Categoría"><select class="e-categoria">' + opciones + '</select>' +
+              (tipo === 'gasto' ? '<select class="e-subcategoria" style="margin-top:6px;">' + opcionesSub(mov.categoria, mov.subcategoria) + '</select>' : '') + '</td>' +
             '<td data-label="Descripción"><input type="text" class="e-descripcion" value="' + esc(mov.descripcion) + '"></td>' +
             '<td class="num" data-label="Monto"><input type="number" class="e-monto" min="0" step="1" value="' + mov.monto + '"></td>' +
             '<td class="acc">' +
@@ -153,6 +170,11 @@
 
           tr.querySelector('button.guardar').addEventListener('click', onGuardar);
           tr.querySelector('button.cancelar').addEventListener('click', renderVista);
+          if (tipo === 'gasto') {
+            tr.querySelector('.e-categoria').addEventListener('change', function() {
+              tr.querySelector('.e-subcategoria').innerHTML = opcionesSub(this.value, '');
+            });
+          }
         }
 
         function onGuardar() {
@@ -162,6 +184,7 @@
           const categoria = tr.querySelector('.e-categoria').value;
           const descripcion = tr.querySelector('.e-descripcion').value.trim();
           const monto = tr.querySelector('.e-monto').value;
+          const subcategoria = tipo === 'gasto' ? tr.querySelector('.e-subcategoria').value : '';
 
           if (!fecha || !categoria || monto === '') {
             mostrarMsg('Completa todos los campos', 'error');
@@ -183,7 +206,7 @@
               btnCancelar.disabled = false;
               mostrarMsg('Error: ' + err.message, 'error');
             })
-            [fn](mov.fila, fecha, categoria, descripcion, monto);
+            [fn](mov.fila, fecha, categoria, descripcion, monto, subcategoria);
         }
 
         function onEliminar() {
@@ -220,6 +243,7 @@
     let rango = null;
     let filtroCategoria = '';
     let filtroTexto = '';
+    let filtroSubcategoria = '';
     let datos = { gastos: [], ingresos: [] };
 
     const pad = n => String(n).padStart(2, '0');
@@ -234,18 +258,34 @@
       };
     }
 
-    function filtrar(lista) {
+    function filtrar(lista, esGasto) {
       const texto = filtroTexto.toLowerCase();
       return lista.filter(function(mov) {
         if (filtroCategoria && mov.categoria !== filtroCategoria) return false;
+        if (esGasto && filtroSubcategoria && mov.subcategoria !== filtroSubcategoria) return false;
         if (texto && String(mov.descripcion).toLowerCase().indexOf(texto) === -1) return false;
         return true;
       });
     }
 
     function pintarTablas() {
-      pintarTabla(filtrar(datos.gastos), 'tablaGastos', 'vacioGastos', 'gasto', categoriasGastos);
-      pintarTabla(filtrar(datos.ingresos), 'tablaIngresos', 'vacioIngresos', 'ingreso', categoriasIngresos);
+      pintarTabla(filtrar(datos.gastos, true), 'tablaGastos', 'vacioGastos', 'gasto', categoriasGastos);
+      pintarTabla(filtrar(datos.ingresos, false), 'tablaIngresos', 'vacioIngresos', 'ingreso', categoriasIngresos);
+    }
+
+    function llenarFiltroSubcategorias() {
+      const select = document.getElementById('fSubcategoria');
+      const cat = document.getElementById('fCategoria').value;
+      const nombres = [];
+      (cat ? [cat] : Object.keys(subcategorias)).forEach(function(c) {
+        (subcategorias[c] || []).forEach(function(s) {
+          if (nombres.indexOf(s) === -1) nombres.push(s);
+        });
+      });
+      nombres.sort(function(a, b) { return a.localeCompare(b, 'es', { sensitivity: 'base' }); });
+      select.innerHTML = '<option value="">Todas</option>' + nombres.map(function(s) {
+        return '<option value="' + esc(s) + '">' + esc(s) + '</option>';
+      }).join('');
     }
 
     function actualizarBotones() {
@@ -296,19 +336,24 @@
       mostrarMsg('', '');
       rango = desde && hasta ? { desde: desde, hasta: hasta } : null;
       filtroCategoria = document.getElementById('fCategoria').value;
+      filtroSubcategoria = document.getElementById('fSubcategoria').value;
       filtroTexto = document.getElementById('fTexto').value.trim();
       cargarHistorial();
     });
+
+    document.getElementById('fCategoria').addEventListener('change', llenarFiltroSubcategorias);
 
     document.getElementById('btnLimpiar').addEventListener('click', function() {
       document.getElementById('fDesde').value = '';
       document.getElementById('fHasta').value = '';
       document.getElementById('fCategoria').value = '';
+      llenarFiltroSubcategorias();
       document.getElementById('fTexto').value = '';
       document.getElementById('filtroAyuda').textContent = '';
       mostrarMsg('', '');
       rango = null;
       filtroCategoria = '';
+      filtroSubcategoria = '';
       filtroTexto = '';
       cargarHistorial();
     });
@@ -341,14 +386,16 @@
     });
 
     function cargarCategoriasYHistorial() {
-      let pendientes = 2;
+      let pendientes = 3;
       function listo() {
         pendientes--;
         if (pendientes === 0) {
           llenarFiltroCategorias();
+          llenarFiltroSubcategorias();
           cargarHistorial();
         }
       }
+      google.script.run.withSuccessHandler(function(mapa) { subcategorias = mapa; listo(); }).getSubcategoriasTodas();
       google.script.run.withSuccessHandler(function(cats) { categoriasGastos = cats; listo(); }).getCategorias();
       google.script.run.withSuccessHandler(function(cats) { categoriasIngresos = cats; listo(); }).getCategoriasIngresos();
     }

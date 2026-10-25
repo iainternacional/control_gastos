@@ -51,8 +51,12 @@ function setupSheets() {
 
   const gastos = ss.getSheetByName('Gastos') || ss.insertSheet('Gastos');
   if (gastos.getLastRow() === 0) {
-    gastos.appendRow(['Fecha', 'Categoría', 'Descripción', 'Monto']);
+    gastos.appendRow(['Fecha', 'Categoría', 'Descripción', 'Monto', 'Subcategoría']);
+  } else {
+    asegurarColumnaSubcategoria(gastos);
   }
+
+  getHojaSubcategorias();
 
   const categorias = ss.getSheetByName('Categorías') || ss.insertSheet('Categorías');
   if (categorias.getLastRow() === 0) {
@@ -76,7 +80,7 @@ function setupSheets() {
     CATEGORIAS_INGRESOS_DEFAULT.forEach(c => categoriasIngresos.appendRow([c]));
   }
 
-  const permitidas = ['Gastos', 'Categorías', 'Presupuesto', 'Ingresos', 'CategoriasIngresos'];
+  const permitidas = ['Gastos', 'Categorías', 'Subcategorías', 'Presupuesto', 'Ingresos', 'CategoriasIngresos'];
   ss.getSheets().forEach(sheet => {
     if (permitidas.indexOf(sheet.getName()) === -1) {
       ss.deleteSheet(sheet);
@@ -106,11 +110,138 @@ function addCategoria(nombre) {
   return { ok: true, categoria: limpio };
 }
 
-function addExpense(fecha, categoria, descripcion, monto) {
+function getHojaSubcategorias() {
+  const ss = getSheet();
+  let sheet = ss.getSheetByName('Subcategorías');
+  if (!sheet) {
+    sheet = ss.insertSheet('Subcategorías');
+    sheet.appendRow(['Categoría', 'Subcategoría']);
+  }
+  return sheet;
+}
+
+function asegurarColumnaSubcategoria(sheet) {
+  if (sheet.getRange(1, 5).getValue() !== 'Subcategoría') sheet.getRange(1, 5).setValue('Subcategoría');
+}
+
+function normalizar(valor) {
+  return String(valor == null ? '' : valor).trim().toLowerCase();
+}
+
+// Devuelve { categoria: [subcategorías] } con todas las subcategorías de gasto.
+function getSubcategoriasTodas() {
+  const sheet = getHojaSubcategorias();
+  const lastRow = sheet.getLastRow();
+  const mapa = {};
+  if (lastRow < 2) return mapa;
+  sheet.getRange(2, 1, lastRow - 1, 2).getValues().forEach(row => {
+    if (!row[0] || !row[1]) return;
+    if (!mapa[row[0]]) mapa[row[0]] = [];
+    mapa[row[0]].push(String(row[1]));
+  });
+  return mapa;
+}
+
+function buscarFilaSubcategoria(sheet, categoria, subcategoria) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return -1;
+  const cat = normalizar(categoria);
+  const sub = normalizar(subcategoria);
+  const valores = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+  for (let i = 0; i < valores.length; i++) {
+    if (normalizar(valores[i][0]) === cat && normalizar(valores[i][1]) === sub) return i + 2;
+  }
+  return -1;
+}
+
+function addSubcategoria(categoria, nombre) {
+  const limpio = String(nombre).trim();
+  if (!limpio) throw new Error('El nombre no puede estar vacío');
+
+  const canonica = getCategorias().filter(c => normalizar(c) === normalizar(categoria))[0];
+  if (!canonica) throw new Error('Esa categoría no existe');
+
+  const sheet = getHojaSubcategorias();
+  if (buscarFilaSubcategoria(sheet, canonica, limpio) !== -1) throw new Error('Esa subcategoría ya existe en ' + canonica);
+
+  sheet.appendRow([canonica, limpio]);
+  return { ok: true, categoria: canonica, subcategoria: limpio };
+}
+
+function reemplazarSubcategoriaEnGastos(categoria, actual, nuevo) {
   const sheet = getSheet().getSheetByName('Gastos');
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  const rango = sheet.getRange(2, 2, lastRow - 1, 4);
+  const valores = rango.getValues();
+  const cat = normalizar(categoria);
+  const sub = normalizar(actual);
+  let cambios = false;
+  valores.forEach(row => {
+    if (normalizar(row[0]) === cat && normalizar(row[3]) === sub) {
+      row[3] = nuevo;
+      cambios = true;
+    }
+  });
+  if (cambios) rango.setValues(valores);
+}
+
+function renameSubcategoria(categoria, actual, nuevo) {
+  const actualLimpio = String(actual).trim();
+  const nuevoLimpio = String(nuevo).trim();
+  if (!nuevoLimpio) throw new Error('El nombre no puede estar vacío');
+  if (normalizar(actualLimpio) === normalizar(nuevoLimpio)) return { ok: true, subcategoria: nuevoLimpio };
+
+  const sheet = getHojaSubcategorias();
+  const fila = buscarFilaSubcategoria(sheet, categoria, actualLimpio);
+  if (fila === -1) throw new Error('Esa subcategoría no existe');
+  if (buscarFilaSubcategoria(sheet, categoria, nuevoLimpio) !== -1) throw new Error('Ya existe una subcategoría con ese nombre');
+
+  sheet.getRange(fila, 2).setValue(nuevoLimpio);
+  reemplazarSubcategoriaEnGastos(categoria, actualLimpio, nuevoLimpio);
+  return { ok: true, subcategoria: nuevoLimpio };
+}
+
+function deleteSubcategoria(categoria, nombre) {
+  const sheet = getHojaSubcategorias();
+  const fila = buscarFilaSubcategoria(sheet, categoria, nombre);
+  if (fila === -1) throw new Error('Esa subcategoría no existe');
+  sheet.deleteRow(fila);
+  return { ok: true };
+}
+
+function reemplazarCategoriaEnSubcategorias(actual, nuevo) {
+  const sheet = getHojaSubcategorias();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  const rango = sheet.getRange(2, 1, lastRow - 1, 1);
+  const valores = rango.getValues();
+  let cambios = false;
+  valores.forEach(row => {
+    if (normalizar(row[0]) === normalizar(actual)) {
+      row[0] = nuevo;
+      cambios = true;
+    }
+  });
+  if (cambios) rango.setValues(valores);
+}
+
+function eliminarSubcategoriasDeCategoria(categoria) {
+  const sheet = getHojaSubcategorias();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  const valores = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (let i = valores.length - 1; i >= 0; i--) {
+    if (normalizar(valores[i][0]) === normalizar(categoria)) sheet.deleteRow(i + 2);
+  }
+}
+
+function addExpense(fecha, categoria, descripcion, monto, subcategoria) {
+  const sheet = getSheet().getSheetByName('Gastos');
+  asegurarColumnaSubcategoria(sheet);
   const partes = fecha.split('-');
   const fechaObj = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
-  sheet.appendRow([fechaObj, categoria, descripcion, parseFloat(monto)]);
+  sheet.appendRow([fechaObj, categoria, descripcion, parseFloat(monto), String(subcategoria || '').trim()]);
   return { ok: true };
 }
 
@@ -461,7 +592,7 @@ function movimientosEnRango(nombreHoja, desde, hasta) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
 
-  const data = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+  const data = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
   const movimientos = [];
 
   data.forEach((row, i) => {
@@ -473,7 +604,8 @@ function movimientosEnRango(nombreHoja, desde, hasta) {
         fecha: fecha.toISOString(),
         categoria: row[1],
         descripcion: row[2],
-        monto: Number(row[3]) || 0
+        monto: Number(row[3]) || 0,
+        subcategoria: nombreHoja === 'Gastos' ? String(row[4] || '') : ''
       });
     }
   });
@@ -537,18 +669,22 @@ function deleteIngreso(fila) {
   return eliminarFila('Ingresos', fila);
 }
 
-function editarFila(nombreHoja, fila, fecha, categoria, descripcion, monto) {
+function editarFila(nombreHoja, fila, fecha, categoria, descripcion, monto, subcategoria) {
   const sheet = getSheet().getSheetByName(nombreHoja);
   const f = parseInt(fila, 10);
   if (!f || f < 2 || f > sheet.getLastRow()) throw new Error('Movimiento no encontrado');
   const partes = fecha.split('-');
   const fechaObj = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
   sheet.getRange(f, 1, 1, 4).setValues([[fechaObj, categoria, descripcion, parseFloat(monto)]]);
+  if (nombreHoja === 'Gastos') {
+    asegurarColumnaSubcategoria(sheet);
+    sheet.getRange(f, 5).setValue(String(subcategoria || '').trim());
+  }
   return { ok: true };
 }
 
-function editExpense(fila, fecha, categoria, descripcion, monto) {
-  return editarFila('Gastos', fila, fecha, categoria, descripcion, monto);
+function editExpense(fila, fecha, categoria, descripcion, monto, subcategoria) {
+  return editarFila('Gastos', fila, fecha, categoria, descripcion, monto, subcategoria);
 }
 
 function editIngreso(fila, fecha, categoria, descripcion, monto) {
@@ -627,6 +763,7 @@ function renameCategoria(actual, nuevo) {
   categorias.getRange(fila, 1).setValue(nuevoLimpio);
 
   reemplazarCategoriaEnPresupuesto(ss.getSheetByName('Presupuesto'), actualLimpio, nuevoLimpio);
+  reemplazarCategoriaEnSubcategorias(actualLimpio, nuevoLimpio);
   reemplazarCategoriaEnMovimientos(ss.getSheetByName('Gastos'), actualLimpio, nuevoLimpio);
 
   return { ok: true, categoria: nuevoLimpio };
@@ -641,6 +778,7 @@ function deleteCategoria(nombre) {
   categorias.deleteRow(fila);
 
   eliminarCategoriaDePresupuesto(ss.getSheetByName('Presupuesto'), limpio);
+  eliminarSubcategoriasDeCategoria(limpio);
 
   return { ok: true };
 }

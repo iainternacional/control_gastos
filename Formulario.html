@@ -32,6 +32,10 @@
             <label for="categoria">Categoría</label>
             <select id="categoria" required></select>
           </div>
+          <div class="campo" id="subcategoriaBox" style="display:none;">
+            <label for="subcategoria">Subcategoría (opcional)</label>
+            <select id="subcategoria"></select>
+          </div>
           <div class="campo">
             <label for="monto">Monto</label>
             <input type="number" id="monto" min="0" step="0.01" placeholder="0" required>
@@ -69,6 +73,28 @@
       return opt;
     }
 
+    let subcategorias = {};
+
+    function actualizarSubcategorias() {
+      const categoria = document.getElementById('categoria').value;
+      const subs = (subcategorias[categoria] || []).slice().sort(function(a, b) {
+        return a.localeCompare(b, 'es', { sensitivity: 'base' });
+      });
+      const select = document.getElementById('subcategoria');
+      select.innerHTML = '';
+      const ninguna = document.createElement('option');
+      ninguna.value = '';
+      ninguna.textContent = 'Sin subcategoría';
+      select.appendChild(ninguna);
+      subs.forEach(function(sub) {
+        const opt = document.createElement('option');
+        opt.value = sub;
+        opt.textContent = sub;
+        select.appendChild(opt);
+      });
+      document.getElementById('subcategoriaBox').style.display = subs.length ? 'block' : 'none';
+    }
+
     google.script.run.withSuccessHandler(function(categorias) {
       const select = document.getElementById('categoria');
       categorias.forEach(function(cat) {
@@ -79,6 +105,11 @@
       opcionNueva.value = OPCION_NUEVA;
       opcionNueva.textContent = '+ Agregar categoría nueva';
       select.appendChild(opcionNueva);
+
+      google.script.run.withSuccessHandler(function(mapa) {
+        subcategorias = mapa;
+        actualizarSubcategorias();
+      }).getSubcategoriasTodas();
     }).getCategorias();
 
     document.getElementById('categoria').addEventListener('change', function() {
@@ -89,6 +120,7 @@
       } else {
         box.style.display = 'none';
       }
+      actualizarSubcategorias();
     });
 
     document.getElementById('btnGuardarCategoria').addEventListener('click', function() {
@@ -112,6 +144,7 @@
           const select = document.getElementById('categoria');
           const opt = agregarOpcionCategoria(select, resultado.categoria);
           select.value = opt.value;
+          actualizarSubcategorias();
           document.getElementById('nuevaCategoriaBox').style.display = 'none';
           input.value = '';
           btn.disabled = false;
@@ -145,6 +178,7 @@
       const fecha = document.getElementById('fecha').value;
       const descripcion = document.getElementById('descripcion').value;
       const monto = document.getElementById('monto').value;
+      const subcategoria = document.getElementById('subcategoria').value;
 
       google.script.run
         .withSuccessHandler(function() {
@@ -153,13 +187,14 @@
           btn.disabled = false;
           document.getElementById('descripcion').value = '';
           document.getElementById('monto').value = '';
+          document.getElementById('subcategoria').value = '';
         })
         .withFailureHandler(function(err) {
           msg.textContent = 'Error: ' + err.message;
           msg.className = 'error';
           btn.disabled = false;
         })
-        .addExpense(fecha, categoria, descripcion, monto);
+        .addExpense(fecha, categoria, descripcion, monto, subcategoria);
     });
   </script>
 </body>

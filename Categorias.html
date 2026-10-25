@@ -25,6 +25,7 @@
     <div class="dos-col">
       <div class="panel">
         <h3>Categorías de gastos</h3>
+        <p class="ayuda" style="margin-bottom:8px;">Cada categoría puede tener subcategorías (ej. Mercado: Pollo, Pescado). El presupuesto sigue siendo por categoría.</p>
         <ul class="lista-categorias" id="listaGastos"></ul>
         <div class="vacio" id="vacioGastos" style="display:none;">Sin categorías de gastos</div>
         <div class="agregar">
@@ -54,7 +55,181 @@
       msg.className = clase;
     }
 
-    function pintarLista(categorias, ulId, vacioId, tipo) {
+    // Fila con nombre, botón de renombrar en línea y botón de eliminar.
+    // opciones: { clase, mensajeOk, mensajeEliminado, confirmar, renombrar(nuevo, ok, fail), eliminar(ok, fail) }
+    function filaEditable(texto, opciones) {
+      const fila = document.createElement('div');
+      fila.className = opciones.clase;
+
+      const span = document.createElement('span');
+      span.className = 'nombre';
+      span.textContent = texto;
+
+      const btnEditar = document.createElement('button');
+      btnEditar.className = 'icono editar';
+      btnEditar.title = 'Renombrar';
+      btnEditar.textContent = '✎';
+
+      const btnEliminar = document.createElement('button');
+      btnEliminar.className = 'icono eliminar';
+      btnEliminar.title = 'Eliminar';
+      btnEliminar.textContent = '✕';
+
+      let editando = false;
+      let procesando = false;
+
+      function salirModoEdicion() {
+        editando = false;
+        span.textContent = texto;
+        btnEditar.textContent = '✎';
+        btnEliminar.disabled = false;
+      }
+
+      function confirmarEdicion() {
+        if (procesando) return;
+        const input = span.querySelector('input');
+        if (!input) return;
+        const nuevo = input.value.trim();
+        if (!nuevo || nuevo === texto) {
+          salirModoEdicion();
+          return;
+        }
+
+        procesando = true;
+        input.disabled = true;
+        btnEditar.disabled = true;
+        mostrarMsg('', '');
+
+        opciones.renombrar(nuevo, function() {
+          mostrarMsg(opciones.mensajeOk, 'ok');
+          cargarCategorias();
+        }, function(err) {
+          procesando = false;
+          mostrarMsg('Error: ' + err.message, 'error');
+          btnEditar.disabled = false;
+          salirModoEdicion();
+        });
+      }
+
+      function entrarModoEdicion() {
+        editando = true;
+        span.innerHTML = '';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = texto;
+        span.appendChild(input);
+        input.focus();
+        input.select();
+        btnEditar.textContent = '✓';
+        btnEliminar.disabled = true;
+
+        input.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') confirmarEdicion();
+          if (e.key === 'Escape') salirModoEdicion();
+        });
+        input.addEventListener('blur', function() {
+          setTimeout(function() {
+            if (editando) confirmarEdicion();
+          }, 150);
+        });
+      }
+
+      btnEditar.addEventListener('click', function() {
+        if (procesando) return;
+        if (editando) {
+          confirmarEdicion();
+        } else {
+          entrarModoEdicion();
+        }
+      });
+
+      btnEliminar.addEventListener('click', function() {
+        if (!confirm(opciones.confirmar)) return;
+
+        btnEliminar.disabled = true;
+        btnEditar.disabled = true;
+        mostrarMsg('', '');
+
+        opciones.eliminar(function() {
+          mostrarMsg(opciones.mensajeEliminado, 'ok');
+          cargarCategorias();
+        }, function(err) {
+          btnEliminar.disabled = false;
+          btnEditar.disabled = false;
+          mostrarMsg('Error: ' + err.message, 'error');
+        });
+      });
+
+      fila.appendChild(span);
+      fila.appendChild(btnEditar);
+      fila.appendChild(btnEliminar);
+      return fila;
+    }
+
+    function bloqueSubcategorias(cat, subs) {
+      const cont = document.createElement('div');
+      cont.className = 'subs';
+
+      const ul = document.createElement('ul');
+      ul.className = 'lista-subs';
+      subs.forEach(function(sub) {
+        const li = document.createElement('li');
+        li.appendChild(filaEditable(sub, {
+          clase: 'fila-sub',
+          mensajeOk: 'Subcategoría actualizada ✓',
+          mensajeEliminado: 'Subcategoría eliminada ✓',
+          confirmar: '¿Eliminar la subcategoría "' + sub + '"? Los gastos ya guardados conservan ese texto; solo dejará de estar disponible para nuevos registros.',
+          renombrar: function(nuevo, ok, fail) {
+            google.script.run.withSuccessHandler(ok).withFailureHandler(fail).renameSubcategoria(cat, sub, nuevo);
+          },
+          eliminar: function(ok, fail) {
+            google.script.run.withSuccessHandler(ok).withFailureHandler(fail).deleteSubcategoria(cat, sub);
+          }
+        }));
+        ul.appendChild(li);
+      });
+      cont.appendChild(ul);
+
+      const agregar = document.createElement('div');
+      agregar.className = 'agregar';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = 'Nueva subcategoría de ' + cat;
+      const btn = document.createElement('button');
+      btn.className = 'btn secundario';
+      btn.textContent = '+ Agregar';
+
+      function agregarSub() {
+        const nombre = input.value.trim();
+        if (!nombre) {
+          mostrarMsg('Escribe un nombre para la subcategoría', 'error');
+          return;
+        }
+        btn.disabled = true;
+        mostrarMsg('', '');
+        google.script.run
+          .withSuccessHandler(function() {
+            mostrarMsg('Subcategoría agregada ✓', 'ok');
+            cargarCategorias();
+          })
+          .withFailureHandler(function(err) {
+            btn.disabled = false;
+            mostrarMsg('Error: ' + err.message, 'error');
+          })
+          .addSubcategoria(cat, nombre);
+      }
+      btn.addEventListener('click', agregarSub);
+      input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') agregarSub();
+      });
+      agregar.appendChild(input);
+      agregar.appendChild(btn);
+      cont.appendChild(agregar);
+
+      return cont;
+    }
+
+    function pintarLista(categorias, ulId, vacioId, tipo, subcategorias) {
       const ul = document.getElementById(ulId);
       const vacio = document.getElementById(vacioId);
       ul.innerHTML = '';
@@ -67,115 +242,27 @@
 
       categorias.forEach(function(cat) {
         const li = document.createElement('li');
-        const span = document.createElement('span');
-        span.className = 'nombre';
-        span.textContent = cat;
 
-        const btnEditar = document.createElement('button');
-        btnEditar.className = 'icono editar';
-        btnEditar.title = 'Renombrar';
-        btnEditar.textContent = '✎';
-
-        const btnEliminar = document.createElement('button');
-        btnEliminar.className = 'icono eliminar';
-        btnEliminar.title = 'Eliminar';
-        btnEliminar.textContent = '✕';
-
-        let editando = false;
-        let procesando = false;
-
-        function salirModoEdicion() {
-          editando = false;
-          span.textContent = cat;
-          btnEditar.textContent = '✎';
-          btnEliminar.disabled = false;
-        }
-
-        function confirmarEdicion() {
-          if (procesando) return;
-          const input = span.querySelector('input');
-          if (!input) return;
-          const nuevo = input.value.trim();
-          if (!nuevo || nuevo === cat) {
-            salirModoEdicion();
-            return;
+        li.appendChild(filaEditable(cat, {
+          clase: 'fila-cat',
+          mensajeOk: 'Categoría actualizada ✓',
+          mensajeEliminado: 'Categoría eliminada ✓',
+          confirmar: '¿Eliminar la categoría "' + cat + '"? Los movimientos ya guardados con esta categoría no se borran, solo dejará de estar disponible para nuevos registros.' +
+            (tipo === 'gasto' ? ' También se eliminarán sus subcategorías.' : ''),
+          renombrar: function(nuevo, ok, fail) {
+            const fn = tipo === 'gasto' ? 'renameCategoria' : 'renameCategoriaIngreso';
+            google.script.run.withSuccessHandler(ok).withFailureHandler(fail)[fn](cat, nuevo);
+          },
+          eliminar: function(ok, fail) {
+            const fn = tipo === 'gasto' ? 'deleteCategoria' : 'deleteCategoriaIngreso';
+            google.script.run.withSuccessHandler(ok).withFailureHandler(fail)[fn](cat);
           }
+        }));
 
-          procesando = true;
-          input.disabled = true;
-          btnEditar.disabled = true;
-          mostrarMsg('', '');
-
-          const fn = tipo === 'gasto' ? 'renameCategoria' : 'renameCategoriaIngreso';
-          google.script.run
-            .withSuccessHandler(function() {
-              mostrarMsg('Categoría actualizada ✓', 'ok');
-              cargarCategorias();
-            })
-            .withFailureHandler(function(err) {
-              procesando = false;
-              mostrarMsg('Error: ' + err.message, 'error');
-              salirModoEdicion();
-            })
-            [fn](cat, nuevo);
+        if (tipo === 'gasto') {
+          li.appendChild(bloqueSubcategorias(cat, subcategorias[cat] || []));
         }
 
-        function entrarModoEdicion() {
-          editando = true;
-          span.innerHTML = '';
-          const input = document.createElement('input');
-          input.type = 'text';
-          input.value = cat;
-          span.appendChild(input);
-          input.focus();
-          input.select();
-          btnEditar.textContent = '✓';
-          btnEliminar.disabled = true;
-
-          input.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') confirmarEdicion();
-            if (e.key === 'Escape') salirModoEdicion();
-          });
-          input.addEventListener('blur', function() {
-            setTimeout(function() {
-              if (editando) confirmarEdicion();
-            }, 150);
-          });
-        }
-
-        btnEditar.addEventListener('click', function() {
-          if (procesando) return;
-          if (editando) {
-            confirmarEdicion();
-          } else {
-            entrarModoEdicion();
-          }
-        });
-
-        btnEliminar.addEventListener('click', function() {
-          if (!confirm('¿Eliminar la categoría "' + cat + '"? Los movimientos ya guardados con esta categoría no se borran, solo dejará de estar disponible para nuevos registros.')) return;
-
-          btnEliminar.disabled = true;
-          btnEditar.disabled = true;
-          mostrarMsg('', '');
-
-          const fn = tipo === 'gasto' ? 'deleteCategoria' : 'deleteCategoriaIngreso';
-          google.script.run
-            .withSuccessHandler(function() {
-              mostrarMsg('Categoría eliminada ✓', 'ok');
-              cargarCategorias();
-            })
-            .withFailureHandler(function(err) {
-              btnEliminar.disabled = false;
-              btnEditar.disabled = false;
-              mostrarMsg('Error: ' + err.message, 'error');
-            })
-            [fn](cat);
-        });
-
-        li.appendChild(span);
-        li.appendChild(btnEditar);
-        li.appendChild(btnEliminar);
         ul.appendChild(li);
       });
     }
@@ -215,15 +302,17 @@
     });
 
     function cargarCategorias() {
-      google.script.run
-        .withSuccessHandler(function(categorias) {
-          pintarLista(categorias, 'listaGastos', 'vacioGastos', 'gasto');
-        })
-        .getCategorias();
+      let categorias = null;
+      let subcategorias = null;
+      function listo() {
+        if (categorias && subcategorias) pintarLista(categorias, 'listaGastos', 'vacioGastos', 'gasto', subcategorias);
+      }
+      google.script.run.withSuccessHandler(function(cats) { categorias = cats; listo(); }).getCategorias();
+      google.script.run.withSuccessHandler(function(subs) { subcategorias = subs; listo(); }).getSubcategoriasTodas();
 
       google.script.run
-        .withSuccessHandler(function(categorias) {
-          pintarLista(categorias, 'listaIngresos', 'vacioIngresos', 'ingreso');
+        .withSuccessHandler(function(cats) {
+          pintarLista(cats, 'listaIngresos', 'vacioIngresos', 'ingreso', {});
         })
         .getCategoriasIngresos();
     }

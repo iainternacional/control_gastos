@@ -143,14 +143,18 @@
   .item-presupuesto input { width: 130px; text-align: right; }
   .lista-categorias { list-style: none; margin: 0; padding: 0; }
   .lista-categorias li {
-    display: flex;
-    align-items: center;
-    gap: 8px;
     padding: 8px 4px;
     border-bottom: 1px solid var(--borde);
   }
   .lista-categorias li:last-child { border-bottom: 0; }
-  .lista-categorias .nombre { flex: 1; overflow-wrap: anywhere; }
+  .fila-cat, .fila-sub { display: flex; align-items: center; gap: 8px; }
+  .fila-sub { padding: 2px 0; font-size: 14px; color: var(--suave); }
+  .nombre { flex: 1; overflow-wrap: anywhere; }
+  .subs { margin: 6px 0 4px 14px; padding-left: 10px; border-left: 2px solid var(--borde); }
+  .lista-subs { list-style: none; margin: 0; padding: 0; }
+  .subs .agregar { margin-top: 6px; }
+  .subs .agregar input { min-height: 34px; font-size: 14px; }
+  .subs .agregar button { min-height: 34px; padding: 6px 12px; font-size: 13px; }
   .acciones { display: flex; gap: 10px; flex-wrap: wrap; }
   .desplegable {
     border: 1px solid var(--borde);
