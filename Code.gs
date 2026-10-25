@@ -32,7 +32,7 @@ const CATEGORIAS_INGRESOS_DEFAULT = [
 
 function doGet(e) {
   const param = e && e.parameter && e.parameter.page;
-  const page = param === 'resumen' ? 'Resumen' : param === 'ingreso' ? 'Ingreso' : 'Formulario';
+  const page = param === 'resumen' ? 'Resumen' : param === 'ingreso' ? 'Ingreso' : param === 'historial' ? 'Historial' : param === 'categorias' ? 'Categorias' : param === 'presupuesto' ? 'Presupuesto' : param === 'proyecciones' ? 'Proyecciones' : 'Formulario';
   const authuser = e && e.parameter && e.parameter.authuser;
   const template = HtmlService.createTemplateFromFile(page);
   template.appUrl = APP_URL;
@@ -62,8 +62,7 @@ function setupSheets() {
 
   const presupuesto = ss.getSheetByName('Presupuesto') || ss.insertSheet('Presupuesto');
   if (presupuesto.getLastRow() === 0) {
-    presupuesto.appendRow(['Categoría', 'Límite Mensual']);
-    CATEGORIAS_DEFAULT.forEach(c => presupuesto.appendRow([c, 0]));
+    presupuesto.appendRow(['Año', 'Mes', 'Categoría', 'Límite Quincenal']);
   }
 
   const ingresos = ss.getSheetByName('Ingresos') || ss.insertSheet('Ingresos');
@@ -102,16 +101,16 @@ function addCategoria(nombre) {
   const yaExiste = existentes.some(c => c.toLowerCase() === limpio.toLowerCase());
   if (yaExiste) throw new Error('Esa categoría ya existe');
 
-  const ss = getSheet();
-  ss.getSheetByName('Categorías').appendRow([limpio]);
-  ss.getSheetByName('Presupuesto').appendRow([limpio, 0]);
+  getSheet().getSheetByName('Categorías').appendRow([limpio]);
 
   return { ok: true, categoria: limpio };
 }
 
 function addExpense(fecha, categoria, descripcion, monto) {
   const sheet = getSheet().getSheetByName('Gastos');
-  sheet.appendRow([new Date(fecha), categoria, descripcion, parseFloat(monto)]);
+  const partes = fecha.split('-');
+  const fechaObj = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
+  sheet.appendRow([fechaObj, categoria, descripcion, parseFloat(monto)]);
   return { ok: true };
 }
 
@@ -138,19 +137,87 @@ function addCategoriaIngreso(nombre) {
 
 function addIngreso(fecha, categoria, descripcion, monto) {
   const sheet = getSheet().getSheetByName('Ingresos');
-  sheet.appendRow([new Date(fecha), categoria, descripcion, parseFloat(monto)]);
+  const partes = fecha.split('-');
+  const fechaObj = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
+  sheet.appendRow([fechaObj, categoria, descripcion, parseFloat(monto)]);
   return { ok: true };
 }
 
-function getPresupuesto() {
+function getPresupuestoPorMes() {
   const sheet = getSheet().getSheetByName('Presupuesto');
   const lastRow = sheet.getLastRow();
-  const map = {};
-  if (lastRow < 2) return map;
-  sheet.getRange(2, 1, lastRow - 1, 2).getValues().forEach(row => {
-    if (row[0]) map[row[0]] = Number(row[1]) || 0;
+  const porMes = {};
+  if (lastRow < 2) return porMes;
+
+  sheet.getRange(2, 1, lastRow - 1, 4).getValues().forEach(row => {
+    const y = Number(row[0]);
+    const m = Number(row[1]);
+    const cat = row[2];
+    if (!y || !m || !cat) return;
+    const key = y + '-' + m;
+    if (!porMes[key]) porMes[key] = { anio: y, mes: m, valores: {} };
+    porMes[key].valores[cat] = Number(row[3]) || 0;
   });
-  return map;
+
+  return porMes;
+}
+
+// Un presupuesto definido para un mes rige también para los meses siguientes
+// hasta que se defina uno nuevo (igual que un sueldo que no cambia cada mes).
+function presupuestoEfectivo(anio, mes) {
+  const porMes = getPresupuestoPorMes();
+  const vigentes = Object.keys(porMes)
+    .map(k => porMes[k])
+    .filter(p => p.anio < anio || (p.anio === anio && p.mes <= mes))
+    .sort((a, b) => a.anio - b.anio || a.mes - b.mes);
+
+  if (vigentes.length === 0) return { origen: null, valores: {} };
+  const ultimo = vigentes[vigentes.length - 1];
+  return { origen: { anio: ultimo.anio, mes: ultimo.mes }, valores: ultimo.valores };
+}
+
+function getPresupuesto(anio, mes) {
+  const now = new Date();
+  const y = anio || now.getFullYear();
+  const m = mes || (now.getMonth() + 1);
+  return presupuestoEfectivo(y, m).valores;
+}
+
+function getPresupuestoDetalle(anio, mes) {
+  const now = new Date();
+  const y = anio || now.getFullYear();
+  const m = mes || (now.getMonth() + 1);
+  const efectivo = presupuestoEfectivo(y, m);
+  return {
+    anio: y,
+    mes: m,
+    origen: efectivo.origen,
+    detalle: getCategorias().map(cat => ({ categoria: cat, limite: efectivo.valores[cat] || 0 }))
+  };
+}
+
+function setPresupuestos(anio, mes, valores) {
+  const now = new Date();
+  const y = anio || now.getFullYear();
+  const m = mes || (now.getMonth() + 1);
+
+  const sheet = getSheet().getSheetByName('Presupuesto');
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow >= 2) {
+    const datos = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+    for (let i = datos.length - 1; i >= 0; i--) {
+      if (Number(datos[i][0]) === y && Number(datos[i][1]) === m) {
+        sheet.deleteRow(i + 2);
+      }
+    }
+  }
+
+  Object.keys(valores).forEach(cat => {
+    sheet.appendRow([y, m, cat, Number(valores[cat]) || 0]);
+  });
+
+  return { ok: true };
 }
 
 function sumarPorMes(sheet, y, m) {
@@ -187,9 +254,10 @@ function getResumen(anio, mes) {
   const disponible = totalIngresos - total;
   const porcentajeGastado = totalIngresos > 0 ? (total / totalIngresos * 100) : null;
 
-  const presupuesto = getPresupuesto();
+  const presupuesto = getPresupuesto(y, m);
   const categorias = getCategorias();
-  const detalle = categorias.map(cat => {
+  const categoriasHuerfanas = Object.keys(gastos.totales).filter(cat => categorias.indexOf(cat) === -1);
+  const detalle = categorias.concat(categoriasHuerfanas).map(cat => {
     const gastado = gastos.totales[cat] || 0;
     return {
       categoria: cat,
@@ -200,4 +268,410 @@ function getResumen(anio, mes) {
   });
 
   return { anio: y, mes: m, total, totalIngresos, disponible, porcentajeGastado, detalle };
+}
+
+// Base de las proyecciones: promedio de los últimos 3 meses completos (solo los que tienen
+// movimientos) y ritmo del mes en curso. Las proyecciones a futuro se calculan en el cliente.
+function getProyecciones() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+
+  const base = [];
+  const indice = {};
+  for (let i = 3; i >= 1; i--) {
+    const d = new Date(y, m - 1 - i, 1);
+    const item = { anio: d.getFullYear(), mes: d.getMonth() + 1, ingresos: 0, gastos: 0, porCategoria: {} };
+    indice[item.anio * 12 + item.mes] = item;
+    base.push(item);
+  }
+  const claveActual = y * 12 + m;
+  const actual = { ingresos: 0, gastos: 0 };
+
+  const ss = getSheet();
+  [['Gastos', 'gastos'], ['Ingresos', 'ingresos']].forEach(par => {
+    const sheet = ss.getSheetByName(par[0]);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return;
+    sheet.getRange(2, 1, lastRow - 1, 4).getValues().forEach(row => {
+      const fecha = row[0];
+      if (!(fecha instanceof Date)) return;
+      const monto = Number(row[3]) || 0;
+      const clave = fecha.getFullYear() * 12 + fecha.getMonth() + 1;
+      const item = indice[clave];
+      if (item) {
+        item[par[1]] += monto;
+        if (par[1] === 'gastos') item.porCategoria[row[1]] = (item.porCategoria[row[1]] || 0) + monto;
+      } else if (clave === claveActual) {
+        actual[par[1]] += monto;
+      }
+    });
+  });
+
+  const conDatos = base.filter(b => b.gastos > 0 || b.ingresos > 0);
+  const n = conDatos.length;
+  const promedioCategorias = {};
+  let sumaIngresos = 0;
+  let sumaGastos = 0;
+  conDatos.forEach(b => {
+    sumaIngresos += b.ingresos;
+    sumaGastos += b.gastos;
+    Object.keys(b.porCategoria).forEach(cat => {
+      promedioCategorias[cat] = (promedioCategorias[cat] || 0) + b.porCategoria[cat];
+    });
+  });
+  Object.keys(promedioCategorias).forEach(cat => { promedioCategorias[cat] = promedioCategorias[cat] / n; });
+
+  const promedioIngresos = n ? sumaIngresos / n : 0;
+  const promedioGastos = n ? sumaGastos / n : 0;
+  const diasMes = new Date(y, m, 0).getDate();
+  const diasTranscurridos = now.getDate();
+  const gastoProyectado = actual.gastos / diasTranscurridos * diasMes;
+  const ingresoEstimado = Math.max(actual.ingresos, promedioIngresos);
+
+  return {
+    mesesBase: n,
+    promedioIngresos,
+    promedioGastos,
+    promedioCategorias,
+    mesActual: {
+      anio: y,
+      mes: m,
+      diasTranscurridos,
+      diasMes,
+      gastado: actual.gastos,
+      ingresado: actual.ingresos,
+      gastoProyectado,
+      ingresoEstimado,
+      disponibleProyectado: ingresoEstimado - gastoProyectado
+    }
+  };
+}
+
+// Ingresos, gastos y disponible de los últimos `cantidad` meses, terminando en anio/mes.
+function getTendencia(anio, mes, cantidad) {
+  const now = new Date();
+  const y = anio || now.getFullYear();
+  const m = mes || (now.getMonth() + 1);
+  const n = cantidad || 6;
+
+  const meses = [];
+  const indice = {};
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(y, m - 1 - i, 1);
+    const item = { anio: d.getFullYear(), mes: d.getMonth() + 1, ingresos: 0, gastos: 0, disponible: 0 };
+    indice[item.anio * 12 + item.mes] = item;
+    meses.push(item);
+  }
+
+  const ss = getSheet();
+  [['Gastos', 'gastos'], ['Ingresos', 'ingresos']].forEach(par => {
+    const sheet = ss.getSheetByName(par[0]);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return;
+    sheet.getRange(2, 1, lastRow - 1, 4).getValues().forEach(row => {
+      const fecha = row[0];
+      if (!(fecha instanceof Date)) return;
+      const item = indice[fecha.getFullYear() * 12 + fecha.getMonth() + 1];
+      if (item) item[par[1]] += Number(row[3]) || 0;
+    });
+  });
+
+  meses.forEach(item => { item.disponible = item.ingresos - item.gastos; });
+  return meses;
+}
+
+function parseFechaLocal(str, finDelDia) {
+  const p = String(str).split('-').map(Number);
+  if (p.length !== 3 || p.some(isNaN)) throw new Error('Fecha inválida');
+  return finDelDia
+    ? new Date(p[0], p[1] - 1, p[2], 23, 59, 59, 999)
+    : new Date(p[0], p[1] - 1, p[2]);
+}
+
+function sumarPorRango(sheet, desde, hasta) {
+  const lastRow = sheet.getLastRow();
+  const data = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 4).getValues() : [];
+
+  const totales = {};
+  let total = 0;
+
+  data.forEach(row => {
+    const fecha = row[0];
+    if (!(fecha instanceof Date) || fecha < desde || fecha > hasta) return;
+    const monto = Number(row[3]) || 0;
+    totales[row[1]] = (totales[row[1]] || 0) + monto;
+    total += monto;
+  });
+
+  return { totales, total };
+}
+
+// Filtra los gastos por rango de fechas y, opcionalmente, por categorías.
+// Los ingresos siempre cuentan completos en el rango (no tienen categoría de gasto).
+function getResumenRango(desde, hasta, categorias) {
+  const d = parseFechaLocal(desde, false);
+  const h = parseFechaLocal(hasta, true);
+  if (d > h) throw new Error('La fecha "desde" no puede ser posterior a "hasta"');
+
+  const ss = getSheet();
+  const gastos = sumarPorRango(ss.getSheetByName('Gastos'), d, h);
+  const ingresos = sumarPorRango(ss.getSheetByName('Ingresos'), d, h);
+
+  const seleccion = categorias && categorias.length ? categorias : null;
+  const actuales = getCategorias();
+  const huerfanas = Object.keys(gastos.totales).filter(cat => actuales.indexOf(cat) === -1);
+  let lista = actuales.concat(huerfanas);
+  if (seleccion) lista = lista.filter(cat => seleccion.indexOf(cat) !== -1);
+
+  const mismoMes = d.getFullYear() === h.getFullYear() && d.getMonth() === h.getMonth();
+  const presupuesto = mismoMes ? getPresupuesto(d.getFullYear(), d.getMonth() + 1) : {};
+
+  const totalIngresos = ingresos.total;
+  const detalle = lista.map(cat => {
+    const gastado = gastos.totales[cat] || 0;
+    return {
+      categoria: cat,
+      gastado: gastado,
+      presupuesto: presupuesto[cat] || 0,
+      porcentajeIngreso: totalIngresos > 0 ? (gastado / totalIngresos * 100) : null
+    };
+  });
+
+  const total = detalle.reduce((suma, item) => suma + item.gastado, 0);
+  return {
+    total,
+    totalIngresos,
+    disponible: totalIngresos - gastos.total,
+    porcentajeGastado: totalIngresos > 0 ? (total / totalIngresos * 100) : null,
+    presupuestoAplica: mismoMes,
+    detalle
+  };
+}
+
+function movimientosDelMes(nombreHoja, anio, mes) {
+  const now = new Date();
+  const y = anio || now.getFullYear();
+  const m = mes || (now.getMonth() + 1);
+  return movimientosEnRango(nombreHoja, new Date(y, m - 1, 1), new Date(y, m, 0, 23, 59, 59, 999));
+}
+
+function movimientosEnRango(nombreHoja, desde, hasta) {
+  const sheet = getSheet().getSheetByName(nombreHoja);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  const data = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+  const movimientos = [];
+
+  data.forEach((row, i) => {
+    const fecha = row[0];
+    if (!(fecha instanceof Date)) return;
+    if (fecha >= desde && fecha <= hasta) {
+      movimientos.push({
+        fila: i + 2,
+        fecha: fecha.toISOString(),
+        categoria: row[1],
+        descripcion: row[2],
+        monto: Number(row[3]) || 0
+      });
+    }
+  });
+
+  movimientos.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+  return movimientos;
+}
+
+function getGastos(anio, mes) {
+  return movimientosDelMes('Gastos', anio, mes);
+}
+
+function getIngresos(anio, mes) {
+  return movimientosDelMes('Ingresos', anio, mes);
+}
+
+function getMovimientosRango(desde, hasta) {
+  const d = parseFechaLocal(desde, false);
+  const h = parseFechaLocal(hasta, true);
+  if (d > h) throw new Error('La fecha "desde" no puede ser posterior a "hasta"');
+  return {
+    gastos: movimientosEnRango('Gastos', d, h),
+    ingresos: movimientosEnRango('Ingresos', d, h)
+  };
+}
+
+function getSaldoInicial() {
+  return Number(PropertiesService.getScriptProperties().getProperty('SALDO_INICIAL')) || 0;
+}
+
+function setSaldoInicial(valor) {
+  const n = Number(valor);
+  if (!isFinite(n) || n < 0) throw new Error('El saldo inicial debe ser un número mayor o igual a 0');
+  PropertiesService.getScriptProperties().setProperty('SALDO_INICIAL', String(n));
+  return { ok: true, saldoInicial: n };
+}
+
+// Saldo real en caja: saldo inicial + todos los ingresos − todos los gastos hasta `hasta` (inclusive).
+function getSaldoAcumulado(hasta) {
+  const fin = parseFechaLocal(hasta, true);
+  const ss = getSheet();
+  const ingresos = sumarPorRango(ss.getSheetByName('Ingresos'), new Date(0), fin).total;
+  const gastos = sumarPorRango(ss.getSheetByName('Gastos'), new Date(0), fin).total;
+  const saldoInicial = getSaldoInicial();
+  return { hasta: hasta, saldoInicial: saldoInicial, saldoAcumulado: saldoInicial + ingresos - gastos };
+}
+
+function eliminarFila(nombreHoja, fila) {
+  const sheet = getSheet().getSheetByName(nombreHoja);
+  const f = parseInt(fila, 10);
+  if (!f || f < 2 || f > sheet.getLastRow()) throw new Error('Movimiento no encontrado');
+  sheet.deleteRow(f);
+  return { ok: true };
+}
+
+function deleteExpense(fila) {
+  return eliminarFila('Gastos', fila);
+}
+
+function deleteIngreso(fila) {
+  return eliminarFila('Ingresos', fila);
+}
+
+function editarFila(nombreHoja, fila, fecha, categoria, descripcion, monto) {
+  const sheet = getSheet().getSheetByName(nombreHoja);
+  const f = parseInt(fila, 10);
+  if (!f || f < 2 || f > sheet.getLastRow()) throw new Error('Movimiento no encontrado');
+  const partes = fecha.split('-');
+  const fechaObj = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
+  sheet.getRange(f, 1, 1, 4).setValues([[fechaObj, categoria, descripcion, parseFloat(monto)]]);
+  return { ok: true };
+}
+
+function editExpense(fila, fecha, categoria, descripcion, monto) {
+  return editarFila('Gastos', fila, fecha, categoria, descripcion, monto);
+}
+
+function editIngreso(fila, fecha, categoria, descripcion, monto) {
+  return editarFila('Ingresos', fila, fecha, categoria, descripcion, monto);
+}
+
+function buscarFilaPorValor(sheet, columna, valor) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return -1;
+  const valores = sheet.getRange(2, columna, lastRow - 1, 1).getValues();
+  const buscado = String(valor).trim().toLowerCase();
+  for (let i = 0; i < valores.length; i++) {
+    if (String(valores[i][0]).trim().toLowerCase() === buscado) return i + 2;
+  }
+  return -1;
+}
+
+function reemplazarCategoriaEnMovimientos(sheet, actual, nuevo) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  const rango = sheet.getRange(2, 2, lastRow - 1, 1);
+  const valores = rango.getValues();
+  const buscado = actual.toLowerCase();
+  let cambios = false;
+  for (let i = 0; i < valores.length; i++) {
+    if (String(valores[i][0]).trim().toLowerCase() === buscado) {
+      valores[i][0] = nuevo;
+      cambios = true;
+    }
+  }
+  if (cambios) rango.setValues(valores);
+}
+
+function reemplazarCategoriaEnPresupuesto(sheet, actual, nuevo) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  const rango = sheet.getRange(2, 3, lastRow - 1, 1);
+  const valores = rango.getValues();
+  const buscado = actual.toLowerCase();
+  let cambios = false;
+  for (let i = 0; i < valores.length; i++) {
+    if (String(valores[i][0]).trim().toLowerCase() === buscado) {
+      valores[i][0] = nuevo;
+      cambios = true;
+    }
+  }
+  if (cambios) rango.setValues(valores);
+}
+
+function eliminarCategoriaDePresupuesto(sheet, categoria) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  const valores = sheet.getRange(2, 3, lastRow - 1, 1).getValues();
+  const buscado = categoria.toLowerCase();
+  for (let i = valores.length - 1; i >= 0; i--) {
+    if (String(valores[i][0]).trim().toLowerCase() === buscado) {
+      sheet.deleteRow(i + 2);
+    }
+  }
+}
+
+function renameCategoria(actual, nuevo) {
+  const actualLimpio = String(actual).trim();
+  const nuevoLimpio = String(nuevo).trim();
+  if (!nuevoLimpio) throw new Error('El nombre no puede estar vacío');
+  if (actualLimpio.toLowerCase() === nuevoLimpio.toLowerCase()) return { ok: true, categoria: nuevoLimpio };
+
+  const ss = getSheet();
+  const categorias = ss.getSheetByName('Categorías');
+  const fila = buscarFilaPorValor(categorias, 1, actualLimpio);
+  if (fila === -1) throw new Error('Esa categoría no existe');
+
+  const yaExiste = getCategorias().some(c => c.toLowerCase() === nuevoLimpio.toLowerCase());
+  if (yaExiste) throw new Error('Ya existe una categoría con ese nombre');
+
+  categorias.getRange(fila, 1).setValue(nuevoLimpio);
+
+  reemplazarCategoriaEnPresupuesto(ss.getSheetByName('Presupuesto'), actualLimpio, nuevoLimpio);
+  reemplazarCategoriaEnMovimientos(ss.getSheetByName('Gastos'), actualLimpio, nuevoLimpio);
+
+  return { ok: true, categoria: nuevoLimpio };
+}
+
+function deleteCategoria(nombre) {
+  const limpio = String(nombre).trim();
+  const ss = getSheet();
+  const categorias = ss.getSheetByName('Categorías');
+  const fila = buscarFilaPorValor(categorias, 1, limpio);
+  if (fila === -1) throw new Error('Esa categoría no existe');
+  categorias.deleteRow(fila);
+
+  eliminarCategoriaDePresupuesto(ss.getSheetByName('Presupuesto'), limpio);
+
+  return { ok: true };
+}
+
+function renameCategoriaIngreso(actual, nuevo) {
+  const actualLimpio = String(actual).trim();
+  const nuevoLimpio = String(nuevo).trim();
+  if (!nuevoLimpio) throw new Error('El nombre no puede estar vacío');
+  if (actualLimpio.toLowerCase() === nuevoLimpio.toLowerCase()) return { ok: true, categoria: nuevoLimpio };
+
+  const ss = getSheet();
+  const categorias = ss.getSheetByName('CategoriasIngresos');
+  const fila = buscarFilaPorValor(categorias, 1, actualLimpio);
+  if (fila === -1) throw new Error('Esa categoría no existe');
+
+  const yaExiste = getCategoriasIngresos().some(c => c.toLowerCase() === nuevoLimpio.toLowerCase());
+  if (yaExiste) throw new Error('Ya existe una categoría con ese nombre');
+
+  categorias.getRange(fila, 1).setValue(nuevoLimpio);
+
+  reemplazarCategoriaEnMovimientos(ss.getSheetByName('Ingresos'), actualLimpio, nuevoLimpio);
+
+  return { ok: true, categoria: nuevoLimpio };
+}
+
+function deleteCategoriaIngreso(nombre) {
+  const limpio = String(nombre).trim();
+  const ss = getSheet();
+  const categorias = ss.getSheetByName('CategoriasIngresos');
+  const fila = buscarFilaPorValor(categorias, 1, limpio);
+  if (fila === -1) throw new Error('Esa categoría no existe');
+  categorias.deleteRow(fila);
+  return { ok: true };
 }

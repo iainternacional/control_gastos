@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <?!= include('Stylesheet') ?>
+</head>
+<body>
+  <header>
+    <h1>Control de Gastos</h1>
+    <nav>
+      <a href="<?= appUrl ?>?page=form<?= authSuffix ?>">Gasto</a>
+      <a href="<?= appUrl ?>?page=ingreso<?= authSuffix ?>">Ingreso</a>
+      <a href="<?= appUrl ?>?page=resumen<?= authSuffix ?>">Resumen</a>
+      <a href="<?= appUrl ?>?page=historial<?= authSuffix ?>">Movimientos</a>
+      <a href="<?= appUrl ?>?page=categorias<?= authSuffix ?>">Categorías</a>
+      <a href="<?= appUrl ?>?page=presupuesto<?= authSuffix ?>" class="activo">Presupuesto</a>
+      <a href="<?= appUrl ?>?page=proyecciones<?= authSuffix ?>">Proyecciones</a>
+    </nav>
+  </header>
+
+  <main>
+    <h2>Presupuesto quincenal</h2>
+    <p class="ayuda">Define el límite quincenal para cada categoría de gasto.</p>
+
+    <div class="periodo-nav">
+      <button class="btn secundario" id="btnAnterior" type="button">← Anterior</button>
+      <div class="periodo" id="periodo"></div>
+      <button class="btn secundario" id="btnSiguiente" type="button">Siguiente →</button>
+    </div>
+    <p class="ayuda" id="origen" style="text-align:center;"></p>
+
+    <div class="panel">
+      <div class="lista-presupuesto" id="lista"></div>
+      <div class="vacio" id="vacio" style="display:none;">No hay categorías de gasto todavía</div>
+    </div>
+
+    <div class="panel angosto" style="background:none;border:0;padding:0;">
+      <button class="btn ancho" id="guardar" style="display:none;">Guardar presupuesto</button>
+      <div id="msg"></div>
+    </div>
+  </main>
+
+  <script>
+    const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+    const hoy = new Date();
+    let anioActual = hoy.getFullYear();
+    let mesActual = hoy.getMonth() + 1;
+
+    function mostrarMsg(texto, clase) {
+      const msg = document.getElementById('msg');
+      msg.textContent = texto;
+      msg.className = clase;
+    }
+
+    function cargarPresupuesto() {
+      document.getElementById('btnAnterior').disabled = true;
+      document.getElementById('btnSiguiente').disabled = true;
+      document.getElementById('periodo').textContent = MESES[mesActual - 1] + ' ' + anioActual;
+      mostrarMsg('', '');
+
+      google.script.run
+        .withSuccessHandler(function(resultado) {
+          anioActual = resultado.anio;
+          mesActual = resultado.mes;
+          document.getElementById('btnAnterior').disabled = false;
+          document.getElementById('btnSiguiente').disabled = false;
+          document.getElementById('periodo').textContent = MESES[mesActual - 1] + ' ' + anioActual;
+
+          const origen = document.getElementById('origen');
+          if (!resultado.origen) {
+            origen.textContent = 'Sin presupuesto definido todavía (valores en 0)';
+          } else if (resultado.origen.anio === anioActual && resultado.origen.mes === mesActual) {
+            origen.textContent = '';
+          } else {
+            origen.textContent = 'Heredado de ' + MESES[resultado.origen.mes - 1] + ' ' + resultado.origen.anio + ' — puedes ajustarlo para este mes';
+          }
+
+          const detalle = resultado.detalle;
+          const lista = document.getElementById('lista');
+          const vacio = document.getElementById('vacio');
+          const guardar = document.getElementById('guardar');
+          lista.innerHTML = '';
+
+          if (detalle.length === 0) {
+            vacio.style.display = 'block';
+            guardar.style.display = 'none';
+            return;
+          }
+          vacio.style.display = 'none';
+          guardar.style.display = 'block';
+
+          detalle.forEach(function(item) {
+            const fila = document.createElement('div');
+            fila.className = 'item-presupuesto';
+
+            const nombre = document.createElement('span');
+            nombre.className = 'nombre';
+            nombre.textContent = item.categoria;
+
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.min = '0';
+            input.step = '1';
+            input.value = item.limite;
+            input.dataset.categoria = item.categoria;
+
+            fila.appendChild(nombre);
+            fila.appendChild(input);
+            lista.appendChild(fila);
+          });
+        })
+        .withFailureHandler(function(err) {
+          document.getElementById('btnAnterior').disabled = false;
+          document.getElementById('btnSiguiente').disabled = false;
+          mostrarMsg('Error: ' + err.message, 'error');
+        })
+        .getPresupuestoDetalle(anioActual, mesActual);
+    }
+
+    document.getElementById('btnAnterior').addEventListener('click', function() {
+      mesActual--;
+      if (mesActual < 1) { mesActual = 12; anioActual--; }
+      cargarPresupuesto();
+    });
+
+    document.getElementById('btnSiguiente').addEventListener('click', function() {
+      mesActual++;
+      if (mesActual > 12) { mesActual = 1; anioActual++; }
+      cargarPresupuesto();
+    });
+
+    document.getElementById('guardar').addEventListener('click', function() {
+      const btn = this;
+      const valores = {};
+      document.querySelectorAll('#lista input').forEach(function(input) {
+        valores[input.dataset.categoria] = Number(input.value) || 0;
+      });
+
+      btn.disabled = true;
+      mostrarMsg('', '');
+
+      google.script.run
+        .withSuccessHandler(function() {
+          btn.disabled = false;
+          mostrarMsg('Presupuesto guardado ✓', 'ok');
+          document.getElementById('origen').textContent = '';
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          mostrarMsg('Error: ' + err.message, 'error');
+        })
+        .setPresupuestos(anioActual, mesActual, valores);
+    });
+
+    cargarPresupuesto();
+  </script>
+</body>
+</html>

@@ -4,75 +4,115 @@
   <base target="_top">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://www.gstatic.com/charts/loader.js"></script>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: -apple-system, Roboto, Arial, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background: #f5f5f5;
-      color: #222;
-    }
-    h1 { font-size: 20px; margin: 0 0 4px; text-align: center; }
-    #periodo { text-align: center; font-size: 14px; color: #666; margin-bottom: 16px; }
-    .container { max-width: 480px; margin: 0 auto; }
-    .totales { display: flex; gap: 10px; margin-bottom: 16px; }
-    .total {
-      flex: 1;
-      background: white;
-      border-radius: 10px;
-      padding: 16px;
-      text-align: center;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    .total .label { font-size: 13px; color: #666; }
-    .total .valor { font-size: 24px; font-weight: 700; }
-    .resumenExtra {
-      background: white;
-      border-radius: 10px;
-      padding: 12px 16px;
-      text-align: center;
-      margin-bottom: 16px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      font-size: 14px;
-    }
-    #chart { width: 100%; height: 260px; margin-bottom: 16px; }
-    table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; }
-    th, td { padding: 10px 12px; text-align: left; font-size: 14px; border-bottom: 1px solid #eee; }
-    th { background: #fafafa; font-size: 12px; color: #666; }
-    td.num { text-align: right; }
-    .over { color: #c62828; font-weight: 600; }
-    nav { text-align: center; margin-top: 16px; }
-    nav a { color: #2e7d32; text-decoration: none; font-size: 14px; }
-  </style>
+  <?!= include('Stylesheet') ?>
 </head>
 <body>
-  <div class="container">
-    <h1>Resumen del mes</h1>
-    <div id="periodo"></div>
-    <div class="totales">
-      <div class="total">
-        <div class="label">Total ingresado</div>
+  <header>
+    <h1>Control de Gastos</h1>
+    <nav>
+      <a href="<?= appUrl ?>?page=form<?= authSuffix ?>">Gasto</a>
+      <a href="<?= appUrl ?>?page=ingreso<?= authSuffix ?>">Ingreso</a>
+      <a href="<?= appUrl ?>?page=resumen<?= authSuffix ?>" class="activo">Resumen</a>
+      <a href="<?= appUrl ?>?page=historial<?= authSuffix ?>">Movimientos</a>
+      <a href="<?= appUrl ?>?page=categorias<?= authSuffix ?>">Categorías</a>
+      <a href="<?= appUrl ?>?page=presupuesto<?= authSuffix ?>">Presupuesto</a>
+      <a href="<?= appUrl ?>?page=proyecciones<?= authSuffix ?>">Proyecciones</a>
+    </nav>
+  </header>
+
+  <main>
+    <h2>Resumen del mes</h2>
+    <div class="periodo-nav">
+      <button class="btn secundario" id="btnAnterior" type="button">← Anterior</button>
+      <div class="periodo" id="periodo"></div>
+      <button class="btn secundario" id="btnSiguiente" type="button">Siguiente →</button>
+    </div>
+
+    <div class="panel">
+      <div class="fila-campos">
+        <div class="campo">
+          <label for="fDesde">Desde</label>
+          <input type="date" id="fDesde">
+        </div>
+        <div class="campo">
+          <label for="fHasta">Hasta</label>
+          <input type="date" id="fHasta">
+        </div>
+        <div class="campo">
+          <label>Categorías</label>
+          <details class="desplegable" id="fCategorias">
+            <summary id="fCategoriasResumen">Todas</summary>
+            <div class="lista-checks" id="fCategoriasLista"></div>
+          </details>
+        </div>
+      </div>
+      <div class="acciones">
+        <button class="btn" id="btnAplicar" type="button">Aplicar filtros</button>
+        <button class="btn secundario" id="btnLimpiar" type="button">Limpiar</button>
+      </div>
+      <p class="ayuda" id="filtroAyuda"></p>
+    </div>
+
+    <div class="rejilla">
+      <div class="tarjeta">
+        <div class="etiqueta">Total ingresado</div>
         <div class="valor" id="totalIngresosValor">—</div>
       </div>
-      <div class="total">
-        <div class="label">Total gastado</div>
+      <div class="tarjeta">
+        <div class="etiqueta">Total gastado</div>
         <div class="valor" id="totalValor">—</div>
       </div>
+      <div class="tarjeta destacada">
+        <div class="etiqueta">Disponible</div>
+        <div class="valor" id="disponibleValor">—</div>
+      </div>
+      <div class="tarjeta">
+        <div class="etiqueta" id="saldoEtiqueta">Saldo acumulado</div>
+        <div class="valor" id="saldoValor">—</div>
+      </div>
     </div>
-    <div class="resumenExtra" id="resumenExtra"></div>
-    <div id="chart"></div>
-    <table>
-      <thead>
-        <tr><th>Categoría</th><th class="num">Gastado</th><th class="num">Presupuesto</th><th class="num">% ingreso</th></tr>
-      </thead>
-      <tbody id="tabla"></tbody>
-    </table>
-    <nav>
-      <a href="<?= appUrl ?>?page=form<?= authSuffix ?>">Registrar un gasto</a> ·
-      <a href="<?= appUrl ?>?page=ingreso<?= authSuffix ?>">Registrar un ingreso</a>
-    </nav>
-  </div>
+    <div class="extra" id="resumenExtra"></div>
+
+    <div class="panel">
+      <div class="fila-campos">
+        <div class="campo">
+          <label for="saldoInicialInput">Saldo inicial (dinero que tenías antes de empezar a registrar)</label>
+          <input type="number" id="saldoInicialInput" min="0" step="1000" placeholder="0">
+        </div>
+      </div>
+      <div class="acciones">
+        <button class="btn secundario" id="btnSaldoInicial" type="button">Guardar saldo inicial</button>
+      </div>
+      <p class="ayuda" id="saldoAyuda"></p>
+    </div>
+
+    <div class="dos-col">
+      <div class="panel">
+        <h3>Gastos por categoría</h3>
+        <div class="grafico" id="chart"></div>
+      </div>
+      <div class="panel">
+        <h3>Gastado vs. presupuesto por categoría</h3>
+        <div class="grafico" id="chartBarras"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Ingresos vs. gastos, últimos 6 meses</h3>
+      <div class="grafico" id="chartTendencia"></div>
+    </div>
+
+    <div class="panel">
+      <div class="tabla-wrap">
+        <table class="tabla-tarjetas">
+          <thead>
+            <tr><th>Categoría</th><th class="num">Gastado</th><th class="num">Presupuesto</th><th class="num">% ingreso</th></tr>
+          </thead>
+          <tbody id="tabla"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
 
   <script>
     google.charts.load('current', { packages: ['corechart'] });
@@ -80,46 +120,262 @@
 
     const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
     const fmt = n => '$' + Number(n).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+    const esc = s => String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    const hoy = new Date();
+    let anioActual = hoy.getFullYear();
+    let mesActual = hoy.getMonth() + 1;
+    let ultimoDetalle = null;
+    let timerResize = null;
+    let rango = null;
+    let categoriasSel = [];
+    let tendencia = null;
+
+    const pad = n => String(n).padStart(2, '0');
+    const fmtFechaCorta = iso => iso.split('-').reverse().join('/');
+
+    function fechasDelPeriodo() {
+      if (rango) return rango;
+      const ultimoDia = new Date(anioActual, mesActual, 0).getDate();
+      return {
+        desde: anioActual + '-' + pad(mesActual) + '-01',
+        hasta: anioActual + '-' + pad(mesActual) + '-' + pad(ultimoDia)
+      };
+    }
+
+    function actualizarBotonesPeriodo() {
+      const esMesActual = anioActual === hoy.getFullYear() && mesActual === (hoy.getMonth() + 1);
+      document.getElementById('btnAnterior').disabled = !!rango;
+      document.getElementById('btnSiguiente').disabled = !!rango || esMesActual;
+    }
 
     function cargarResumen() {
-      google.script.run.withSuccessHandler(pintarResumen).getResumen();
+      const f = fechasDelPeriodo();
+      document.getElementById('btnAnterior').disabled = true;
+      document.getElementById('btnSiguiente').disabled = true;
+      document.getElementById('btnAplicar').disabled = true;
+      document.getElementById('periodo').textContent = rango
+        ? fmtFechaCorta(f.desde) + ' – ' + fmtFechaCorta(f.hasta)
+        : MESES[mesActual - 1] + ' ' + anioActual;
+
+      google.script.run
+        .withSuccessHandler(function(resumen) {
+          document.getElementById('btnAplicar').disabled = false;
+          actualizarBotonesPeriodo();
+          pintarResumen(resumen);
+        })
+        .withFailureHandler(function(err) {
+          document.getElementById('btnAplicar').disabled = false;
+          actualizarBotonesPeriodo();
+          document.getElementById('filtroAyuda').textContent = 'Error: ' + err.message;
+        })
+        .getResumenRango(f.desde, f.hasta, categoriasSel);
+
+      const fin = rango ? rango.hasta.split('-').map(Number) : [anioActual, mesActual];
+      google.script.run
+        .withSuccessHandler(function(meses) {
+          tendencia = meses;
+          dibujarTendencia();
+        })
+        .getTendencia(fin[0], fin[1], 6);
+
+      google.script.run
+        .withSuccessHandler(pintarSaldo)
+        .getSaldoAcumulado(f.hasta);
     }
+
+    function pintarSaldo(saldo) {
+      document.getElementById('saldoEtiqueta').textContent = 'Saldo acumulado al ' + fmtFechaCorta(saldo.hasta);
+      const valor = document.getElementById('saldoValor');
+      valor.textContent = fmt(saldo.saldoAcumulado);
+      valor.className = 'valor' + (saldo.saldoAcumulado < 0 ? ' negativo' : '');
+    }
+
+    document.getElementById('btnSaldoInicial').addEventListener('click', function() {
+      const btn = this;
+      const ayuda = document.getElementById('saldoAyuda');
+      const valor = document.getElementById('saldoInicialInput').value;
+      btn.disabled = true;
+      ayuda.textContent = '';
+      google.script.run
+        .withSuccessHandler(function() {
+          btn.disabled = false;
+          ayuda.textContent = 'Saldo inicial guardado ✓';
+          cargarResumen();
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          ayuda.textContent = 'Error: ' + err.message;
+        })
+        .setSaldoInicial(valor === '' ? 0 : valor);
+    });
+
+    google.script.run
+      .withSuccessHandler(function(saldo) {
+        document.getElementById('saldoInicialInput').value = saldo;
+      })
+      .getSaldoInicial();
+
+    function textoAyudaFiltros() {
+      const partes = [];
+      if (categoriasSel.length) partes.push('Gastos filtrados por categoría; "Disponible" considera todos los gastos del periodo.');
+      if (rango) partes.push('El presupuesto solo se muestra cuando el rango está dentro de un mismo mes.');
+      return partes.join(' ');
+    }
+
+    function leerCategoriasSeleccionadas() {
+      const marcadas = Array.prototype.slice.call(document.querySelectorAll('#fCategoriasLista input:checked'))
+        .map(function(c) { return c.value; });
+      document.getElementById('fCategoriasResumen').textContent =
+        marcadas.length === 0 ? 'Todas' : marcadas.length + ' seleccionada' + (marcadas.length === 1 ? '' : 's');
+      return marcadas;
+    }
+
+    document.getElementById('btnAnterior').addEventListener('click', function() {
+      mesActual--;
+      if (mesActual < 1) { mesActual = 12; anioActual--; }
+      cargarResumen();
+    });
+
+    document.getElementById('btnSiguiente').addEventListener('click', function() {
+      mesActual++;
+      if (mesActual > 12) { mesActual = 1; anioActual++; }
+      cargarResumen();
+    });
+
+    document.getElementById('fCategoriasLista').addEventListener('change', leerCategoriasSeleccionadas);
+
+    document.getElementById('btnAplicar').addEventListener('click', function() {
+      const desde = document.getElementById('fDesde').value;
+      const hasta = document.getElementById('fHasta').value;
+      const ayuda = document.getElementById('filtroAyuda');
+
+      if ((desde && !hasta) || (!desde && hasta)) {
+        ayuda.textContent = 'Indica las dos fechas (desde y hasta) o deja ambas vacías.';
+        return;
+      }
+      if (desde && hasta && desde > hasta) {
+        ayuda.textContent = 'La fecha "desde" no puede ser posterior a "hasta".';
+        return;
+      }
+
+      rango = desde && hasta ? { desde: desde, hasta: hasta } : null;
+      categoriasSel = leerCategoriasSeleccionadas();
+      ayuda.textContent = textoAyudaFiltros();
+      cargarResumen();
+    });
+
+    document.getElementById('btnLimpiar').addEventListener('click', function() {
+      document.getElementById('fDesde').value = '';
+      document.getElementById('fHasta').value = '';
+      document.querySelectorAll('#fCategoriasLista input').forEach(function(c) { c.checked = false; });
+      rango = null;
+      categoriasSel = leerCategoriasSeleccionadas();
+      document.getElementById('filtroAyuda').textContent = '';
+      cargarResumen();
+    });
+
+    google.script.run.withSuccessHandler(function(categorias) {
+      const lista = document.getElementById('fCategoriasLista');
+      categorias.forEach(function(cat) {
+        const label = document.createElement('label');
+        const check = document.createElement('input');
+        check.type = 'checkbox';
+        check.value = cat;
+        label.appendChild(check);
+        label.appendChild(document.createTextNode(cat));
+        lista.appendChild(label);
+      });
+    }).getCategorias();
 
     const fmtPct = p => p === null ? '—' : p.toFixed(0) + '%';
 
     function pintarResumen(resumen) {
-      document.getElementById('periodo').textContent = MESES[resumen.mes - 1] + ' ' + resumen.anio;
       document.getElementById('totalValor').textContent = fmt(resumen.total);
       document.getElementById('totalIngresosValor').textContent = fmt(resumen.totalIngresos);
 
-      const extra = document.getElementById('resumenExtra');
-      const disponibleClase = resumen.disponible < 0 ? ' class="over"' : '';
-      extra.innerHTML =
-        'Disponible: <strong' + disponibleClase + '>' + fmt(resumen.disponible) + '</strong>' +
-        ' &middot; Gastaste el <strong>' + fmtPct(resumen.porcentajeGastado) + '</strong> de tu ingreso';
+      const disponible = document.getElementById('disponibleValor');
+      disponible.textContent = fmt(resumen.disponible);
+      disponible.className = 'valor' + (resumen.disponible < 0 ? ' negativo' : '');
+
+      document.getElementById('resumenExtra').innerHTML =
+        'Gastaste el <strong>' + fmtPct(resumen.porcentajeGastado) + '</strong> de tu ingreso';
 
       const tabla = document.getElementById('tabla');
       tabla.innerHTML = '';
       const dataChart = [['Categoría', 'Gastado']];
+      const dataBarras = [['Categoría', 'Gastado', 'Presupuesto']];
 
       resumen.detalle.forEach(item => {
         const tr = document.createElement('tr');
         const sobrePresupuesto = item.presupuesto > 0 && item.gastado > item.presupuesto;
         tr.innerHTML =
-          '<td>' + item.categoria + '</td>' +
-          '<td class="num' + (sobrePresupuesto ? ' over' : '') + '">' + fmt(item.gastado) + '</td>' +
-          '<td class="num">' + (item.presupuesto > 0 ? fmt(item.presupuesto) : '—') + '</td>' +
-          '<td class="num">' + fmtPct(item.porcentajeIngreso) + '</td>';
+          '<td data-label="Categoría">' + esc(item.categoria) + '</td>' +
+          '<td class="num' + (sobrePresupuesto ? ' over' : '') + '" data-label="Gastado">' + fmt(item.gastado) + '</td>' +
+          '<td class="num" data-label="Presupuesto">' + (item.presupuesto > 0 ? fmt(item.presupuesto) : '—') + '</td>' +
+          '<td class="num" data-label="% ingreso">' + fmtPct(item.porcentajeIngreso) + '</td>';
         tabla.appendChild(tr);
         if (item.gastado > 0) dataChart.push([item.categoria, item.gastado]);
+        if (item.gastado > 0 || item.presupuesto > 0) dataBarras.push([item.categoria, item.gastado, item.presupuesto]);
       });
 
-      const data = google.visualization.arrayToDataTable(
-        dataChart.length > 1 ? dataChart : [['Categoría', 'Gastado'], ['Sin datos', 0]]
-      );
-      const chart = new google.visualization.PieChart(document.getElementById('chart'));
-      chart.draw(data, { legend: { position: 'right', textStyle: { fontSize: 12 } }, chartArea: { width: '90%', height: '90%' } });
+      ultimoDetalle = { dataChart, dataBarras };
+      dibujarGraficas();
     }
+
+    function dibujarGraficas() {
+      if (!ultimoDetalle) return;
+      const angosto = document.getElementById('chart').offsetWidth < 480;
+
+      const data = google.visualization.arrayToDataTable(
+        ultimoDetalle.dataChart.length > 1 ? ultimoDetalle.dataChart : [['Categoría', 'Gastado'], ['Sin datos', 0]]
+      );
+      new google.visualization.PieChart(document.getElementById('chart')).draw(data, {
+        legend: { position: angosto ? 'bottom' : 'right', textStyle: { fontSize: 12 } },
+        chartArea: { width: '90%', height: '80%' }
+      });
+
+      const barras = google.visualization.arrayToDataTable(
+        ultimoDetalle.dataBarras.length > 1 ? ultimoDetalle.dataBarras : [['Categoría', 'Gastado', 'Presupuesto'], ['Sin datos', 0, 0]]
+      );
+      new google.visualization.ColumnChart(document.getElementById('chartBarras')).draw(barras, {
+        colors: ['#2e7d32', '#bbbbbb'],
+        legend: { position: 'top', textStyle: { fontSize: 12 } },
+        chartArea: { width: '80%', height: '65%' },
+        vAxis: { format: 'short', textStyle: { fontSize: 11 } },
+        hAxis: { textStyle: { fontSize: 10 } }
+      });
+    }
+
+    function dibujarTendencia() {
+      if (!tendencia) return;
+      const filas = [['Mes', 'Ingresos', 'Gastos', 'Disponible']];
+      tendencia.forEach(function(item) {
+        const etiqueta = MESES[item.mes - 1].substring(0, 3) + ' ' + String(item.anio).slice(-2);
+        filas.push([etiqueta, item.ingresos, item.gastos, item.disponible]);
+      });
+      new google.visualization.ComboChart(document.getElementById('chartTendencia')).draw(
+        google.visualization.arrayToDataTable(filas),
+        {
+          seriesType: 'bars',
+          series: { 2: { type: 'line', pointSize: 5, lineWidth: 3 } },
+          colors: ['#2e7d32', '#ef6c00', '#1f4e79'],
+          legend: { position: 'top', textStyle: { fontSize: 12 } },
+          chartArea: { width: '85%', height: '70%' },
+          vAxis: { format: 'short', textStyle: { fontSize: 11 } },
+          hAxis: { textStyle: { fontSize: 11 } }
+        }
+      );
+    }
+
+    window.addEventListener('resize', function() {
+      clearTimeout(timerResize);
+      timerResize = setTimeout(function() {
+        dibujarGraficas();
+        dibujarTendencia();
+      }, 200);
+    });
   </script>
 </body>
 </html>

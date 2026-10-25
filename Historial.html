@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <?!= include('Stylesheet') ?>
+</head>
+<body>
+  <header>
+    <h1>Control de Gastos</h1>
+    <nav>
+      <a href="<?= appUrl ?>?page=form<?= authSuffix ?>">Gasto</a>
+      <a href="<?= appUrl ?>?page=ingreso<?= authSuffix ?>">Ingreso</a>
+      <a href="<?= appUrl ?>?page=resumen<?= authSuffix ?>">Resumen</a>
+      <a href="<?= appUrl ?>?page=historial<?= authSuffix ?>" class="activo">Movimientos</a>
+      <a href="<?= appUrl ?>?page=categorias<?= authSuffix ?>">Categorías</a>
+      <a href="<?= appUrl ?>?page=presupuesto<?= authSuffix ?>">Presupuesto</a>
+      <a href="<?= appUrl ?>?page=proyecciones<?= authSuffix ?>">Proyecciones</a>
+    </nav>
+  </header>
+
+  <main>
+    <h2>Movimientos del mes</h2>
+    <div class="periodo-nav">
+      <button class="btn secundario" id="btnAnterior" type="button">← Anterior</button>
+      <div class="periodo" id="periodo"></div>
+      <button class="btn secundario" id="btnSiguiente" type="button">Siguiente →</button>
+    </div>
+
+    <div class="panel">
+      <div class="fila-campos">
+        <div class="campo">
+          <label for="fDesde">Desde</label>
+          <input type="date" id="fDesde">
+        </div>
+        <div class="campo">
+          <label for="fHasta">Hasta</label>
+          <input type="date" id="fHasta">
+        </div>
+        <div class="campo">
+          <label for="fCategoria">Categoría</label>
+          <select id="fCategoria"><option value="">Todas</option></select>
+        </div>
+        <div class="campo">
+          <label for="fTexto">Buscar en descripción</label>
+          <input type="text" id="fTexto" placeholder="Ej: pollo">
+        </div>
+      </div>
+      <div class="acciones">
+        <button class="btn" id="btnAplicar" type="button">Aplicar filtros</button>
+        <button class="btn secundario" id="btnLimpiar" type="button">Limpiar</button>
+      </div>
+      <p class="ayuda" id="filtroAyuda"></p>
+    </div>
+
+    <div class="dos-col">
+      <div class="panel">
+        <h3>Gastos</h3>
+        <div class="tabla-wrap">
+          <table class="tabla-tarjetas">
+            <thead>
+              <tr><th>Fecha</th><th>Categoría</th><th>Descripción</th><th class="num">Monto</th><th></th></tr>
+            </thead>
+            <tbody id="tablaGastos"></tbody>
+          </table>
+        </div>
+        <div class="vacio" id="vacioGastos" style="display:none;">Sin gastos para este periodo o filtro</div>
+      </div>
+
+      <div class="panel">
+        <h3>Ingresos</h3>
+        <div class="tabla-wrap">
+          <table class="tabla-tarjetas">
+            <thead>
+              <tr><th>Fecha</th><th>Categoría</th><th>Descripción</th><th class="num">Monto</th><th></th></tr>
+            </thead>
+            <tbody id="tablaIngresos"></tbody>
+          </table>
+        </div>
+        <div class="vacio" id="vacioIngresos" style="display:none;">Sin ingresos para este periodo o filtro</div>
+      </div>
+    </div>
+
+    <div id="msg"></div>
+  </main>
+
+  <script>
+    const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const fmt = n => '$' + Number(n).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+    const fmtFecha = iso => {
+      const d = new Date(iso);
+      return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
+    };
+    const fmtFechaInput = iso => {
+      const d = new Date(iso);
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    };
+    const esc = s => String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    function mostrarMsg(texto, clase) {
+      const msg = document.getElementById('msg');
+      msg.textContent = texto;
+      msg.className = clase;
+    }
+
+    function pintarTabla(movimientos, tbodyId, vacioId, tipo, categorias) {
+      const tbody = document.getElementById(tbodyId);
+      const vacio = document.getElementById(vacioId);
+      tbody.innerHTML = '';
+
+      if (movimientos.length === 0) {
+        vacio.style.display = 'block';
+        return;
+      }
+      vacio.style.display = 'none';
+
+      movimientos.forEach(function(mov) {
+        const tr = document.createElement('tr');
+
+        function renderVista() {
+          tr.innerHTML =
+            '<td data-label="Fecha">' + fmtFecha(mov.fecha) + '</td>' +
+            '<td data-label="Categoría">' + esc(mov.categoria) + '</td>' +
+            '<td data-label="Descripción">' + esc(mov.descripcion) + '</td>' +
+            '<td class="num" data-label="Monto">' + fmt(mov.monto) + '</td>' +
+            '<td class="acc">' +
+              '<button class="icono editar" title="Editar">✎</button>' +
+              '<button class="icono eliminar" title="Eliminar">✕</button>' +
+            '</td>';
+
+          tr.querySelector('button.editar').addEventListener('click', renderEdicion);
+          tr.querySelector('button.eliminar').addEventListener('click', onEliminar);
+        }
+
+        function renderEdicion() {
+          const listaCategorias = categorias.indexOf(mov.categoria) === -1
+            ? [mov.categoria].concat(categorias)
+            : categorias;
+          const opciones = listaCategorias.map(function(c) {
+            return '<option value="' + esc(c) + '"' + (c === mov.categoria ? ' selected' : '') + '>' + esc(c) + '</option>';
+          }).join('');
+
+          tr.innerHTML =
+            '<td data-label="Fecha"><input type="date" class="e-fecha" value="' + fmtFechaInput(mov.fecha) + '"></td>' +
+            '<td data-label="Categoría"><select class="e-categoria">' + opciones + '</select></td>' +
+            '<td data-label="Descripción"><input type="text" class="e-descripcion" value="' + esc(mov.descripcion) + '"></td>' +
+            '<td class="num" data-label="Monto"><input type="number" class="e-monto" min="0" step="1" value="' + mov.monto + '"></td>' +
+            '<td class="acc">' +
+              '<button class="icono guardar" title="Guardar">✓</button>' +
+              '<button class="icono cancelar" title="Cancelar">✕</button>' +
+            '</td>';
+
+          tr.querySelector('button.guardar').addEventListener('click', onGuardar);
+          tr.querySelector('button.cancelar').addEventListener('click', renderVista);
+        }
+
+        function onGuardar() {
+          const btnGuardar = tr.querySelector('button.guardar');
+          const btnCancelar = tr.querySelector('button.cancelar');
+          const fecha = tr.querySelector('.e-fecha').value;
+          const categoria = tr.querySelector('.e-categoria').value;
+          const descripcion = tr.querySelector('.e-descripcion').value.trim();
+          const monto = tr.querySelector('.e-monto').value;
+
+          if (!fecha || !categoria || monto === '') {
+            mostrarMsg('Completa todos los campos', 'error');
+            return;
+          }
+
+          btnGuardar.disabled = true;
+          btnCancelar.disabled = true;
+          mostrarMsg('', '');
+
+          const fn = tipo === 'gasto' ? 'editExpense' : 'editIngreso';
+          google.script.run
+            .withSuccessHandler(function() {
+              mostrarMsg('Guardado ✓', 'ok');
+              cargarHistorial();
+            })
+            .withFailureHandler(function(err) {
+              btnGuardar.disabled = false;
+              btnCancelar.disabled = false;
+              mostrarMsg('Error: ' + err.message, 'error');
+            })
+            [fn](mov.fila, fecha, categoria, descripcion, monto);
+        }
+
+        function onEliminar() {
+          const btn = tr.querySelector('button.eliminar');
+          const descripcionCorta = mov.descripcion ? ('"' + mov.descripcion + '"') : 'este movimiento';
+          if (!confirm('¿Eliminar ' + descripcionCorta + ' por ' + fmt(mov.monto) + '?')) return;
+
+          btn.disabled = true;
+          mostrarMsg('', '');
+
+          const fn = tipo === 'gasto' ? 'deleteExpense' : 'deleteIngreso';
+          google.script.run
+            .withSuccessHandler(function() {
+              mostrarMsg('Eliminado ✓', 'ok');
+              cargarHistorial();
+            })
+            .withFailureHandler(function(err) {
+              btn.disabled = false;
+              mostrarMsg('Error: ' + err.message, 'error');
+            })
+            [fn](mov.fila);
+        }
+
+        renderVista();
+        tbody.appendChild(tr);
+      });
+    }
+
+    const hoy = new Date();
+    let anioActual = hoy.getFullYear();
+    let mesActual = hoy.getMonth() + 1;
+    let categoriasGastos = [];
+    let categoriasIngresos = [];
+    let rango = null;
+    let filtroCategoria = '';
+    let filtroTexto = '';
+    let datos = { gastos: [], ingresos: [] };
+
+    const pad = n => String(n).padStart(2, '0');
+    const fmtFechaCorta = iso => iso.split('-').reverse().join('/');
+
+    function fechasDelPeriodo() {
+      if (rango) return rango;
+      const ultimoDia = new Date(anioActual, mesActual, 0).getDate();
+      return {
+        desde: anioActual + '-' + pad(mesActual) + '-01',
+        hasta: anioActual + '-' + pad(mesActual) + '-' + pad(ultimoDia)
+      };
+    }
+
+    function filtrar(lista) {
+      const texto = filtroTexto.toLowerCase();
+      return lista.filter(function(mov) {
+        if (filtroCategoria && mov.categoria !== filtroCategoria) return false;
+        if (texto && String(mov.descripcion).toLowerCase().indexOf(texto) === -1) return false;
+        return true;
+      });
+    }
+
+    function pintarTablas() {
+      pintarTabla(filtrar(datos.gastos), 'tablaGastos', 'vacioGastos', 'gasto', categoriasGastos);
+      pintarTabla(filtrar(datos.ingresos), 'tablaIngresos', 'vacioIngresos', 'ingreso', categoriasIngresos);
+    }
+
+    function actualizarBotones() {
+      const esMesActual = anioActual === hoy.getFullYear() && mesActual === (hoy.getMonth() + 1);
+      document.getElementById('btnAnterior').disabled = !!rango;
+      document.getElementById('btnSiguiente').disabled = !!rango || esMesActual;
+    }
+
+    function cargarHistorial() {
+      const f = fechasDelPeriodo();
+      document.getElementById('btnAnterior').disabled = true;
+      document.getElementById('btnSiguiente').disabled = true;
+      document.getElementById('btnAplicar').disabled = true;
+      document.getElementById('periodo').textContent = rango
+        ? fmtFechaCorta(f.desde) + ' – ' + fmtFechaCorta(f.hasta)
+        : MESES[mesActual - 1] + ' ' + anioActual;
+
+      google.script.run
+        .withSuccessHandler(function(resultado) {
+          datos = resultado;
+          document.getElementById('btnAplicar').disabled = false;
+          actualizarBotones();
+          pintarTablas();
+        })
+        .withFailureHandler(function(err) {
+          document.getElementById('btnAplicar').disabled = false;
+          actualizarBotones();
+          mostrarMsg('Error: ' + err.message, 'error');
+        })
+        .getMovimientosRango(f.desde, f.hasta);
+    }
+
+    document.getElementById('btnAplicar').addEventListener('click', function() {
+      const desde = document.getElementById('fDesde').value;
+      const hasta = document.getElementById('fHasta').value;
+      const ayuda = document.getElementById('filtroAyuda');
+
+      if ((desde && !hasta) || (!desde && hasta)) {
+        ayuda.textContent = 'Indica las dos fechas (desde y hasta) o deja ambas vacías.';
+        return;
+      }
+      if (desde && hasta && desde > hasta) {
+        ayuda.textContent = 'La fecha "desde" no puede ser posterior a "hasta".';
+        return;
+      }
+
+      ayuda.textContent = '';
+      mostrarMsg('', '');
+      rango = desde && hasta ? { desde: desde, hasta: hasta } : null;
+      filtroCategoria = document.getElementById('fCategoria').value;
+      filtroTexto = document.getElementById('fTexto').value.trim();
+      cargarHistorial();
+    });
+
+    document.getElementById('btnLimpiar').addEventListener('click', function() {
+      document.getElementById('fDesde').value = '';
+      document.getElementById('fHasta').value = '';
+      document.getElementById('fCategoria').value = '';
+      document.getElementById('fTexto').value = '';
+      document.getElementById('filtroAyuda').textContent = '';
+      mostrarMsg('', '');
+      rango = null;
+      filtroCategoria = '';
+      filtroTexto = '';
+      cargarHistorial();
+    });
+
+    function llenarFiltroCategorias() {
+      const select = document.getElementById('fCategoria');
+      const nombres = categoriasGastos.concat(categoriasIngresos.filter(function(c) {
+        return categoriasGastos.indexOf(c) === -1;
+      }));
+      nombres.forEach(function(cat) {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.textContent = cat;
+        select.appendChild(opt);
+      });
+    }
+
+    document.getElementById('btnAnterior').addEventListener('click', function() {
+      mesActual--;
+      if (mesActual < 1) { mesActual = 12; anioActual--; }
+      mostrarMsg('', '');
+      cargarHistorial();
+    });
+
+    document.getElementById('btnSiguiente').addEventListener('click', function() {
+      mesActual++;
+      if (mesActual > 12) { mesActual = 1; anioActual++; }
+      mostrarMsg('', '');
+      cargarHistorial();
+    });
+
+    function cargarCategoriasYHistorial() {
+      let pendientes = 2;
+      function listo() {
+        pendientes--;
+        if (pendientes === 0) {
+          llenarFiltroCategorias();
+          cargarHistorial();
+        }
+      }
+      google.script.run.withSuccessHandler(function(cats) { categoriasGastos = cats; listo(); }).getCategorias();
+      google.script.run.withSuccessHandler(function(cats) { categoriasIngresos = cats; listo(); }).getCategoriasIngresos();
+    }
+
+    cargarCategoriasYHistorial();
+  </script>
+</body>
+</html>

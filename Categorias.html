@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <?!= include('Stylesheet') ?>
+</head>
+<body>
+  <header>
+    <h1>Control de Gastos</h1>
+    <nav>
+      <a href="<?= appUrl ?>?page=form<?= authSuffix ?>">Gasto</a>
+      <a href="<?= appUrl ?>?page=ingreso<?= authSuffix ?>">Ingreso</a>
+      <a href="<?= appUrl ?>?page=resumen<?= authSuffix ?>">Resumen</a>
+      <a href="<?= appUrl ?>?page=historial<?= authSuffix ?>">Movimientos</a>
+      <a href="<?= appUrl ?>?page=categorias<?= authSuffix ?>" class="activo">Categorías</a>
+      <a href="<?= appUrl ?>?page=presupuesto<?= authSuffix ?>">Presupuesto</a>
+      <a href="<?= appUrl ?>?page=proyecciones<?= authSuffix ?>">Proyecciones</a>
+    </nav>
+  </header>
+
+  <main>
+    <h2>Categorías</h2>
+
+    <div class="dos-col">
+      <div class="panel">
+        <h3>Categorías de gastos</h3>
+        <ul class="lista-categorias" id="listaGastos"></ul>
+        <div class="vacio" id="vacioGastos" style="display:none;">Sin categorías de gastos</div>
+        <div class="agregar">
+          <input type="text" id="nuevaGasto" placeholder="Nueva categoría de gasto">
+          <button class="btn" id="btnAgregarGasto">Agregar</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Categorías de ingreso</h3>
+        <ul class="lista-categorias" id="listaIngresos"></ul>
+        <div class="vacio" id="vacioIngresos" style="display:none;">Sin categorías de ingreso</div>
+        <div class="agregar">
+          <input type="text" id="nuevaIngreso" placeholder="Nueva categoría de ingreso">
+          <button class="btn" id="btnAgregarIngreso">Agregar</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="msg"></div>
+  </main>
+
+  <script>
+    function mostrarMsg(texto, clase) {
+      const msg = document.getElementById('msg');
+      msg.textContent = texto;
+      msg.className = clase;
+    }
+
+    function pintarLista(categorias, ulId, vacioId, tipo) {
+      const ul = document.getElementById(ulId);
+      const vacio = document.getElementById(vacioId);
+      ul.innerHTML = '';
+
+      if (categorias.length === 0) {
+        vacio.style.display = 'block';
+        return;
+      }
+      vacio.style.display = 'none';
+
+      categorias.forEach(function(cat) {
+        const li = document.createElement('li');
+        const span = document.createElement('span');
+        span.className = 'nombre';
+        span.textContent = cat;
+
+        const btnEditar = document.createElement('button');
+        btnEditar.className = 'icono editar';
+        btnEditar.title = 'Renombrar';
+        btnEditar.textContent = '✎';
+
+        const btnEliminar = document.createElement('button');
+        btnEliminar.className = 'icono eliminar';
+        btnEliminar.title = 'Eliminar';
+        btnEliminar.textContent = '✕';
+
+        let editando = false;
+        let procesando = false;
+
+        function salirModoEdicion() {
+          editando = false;
+          span.textContent = cat;
+          btnEditar.textContent = '✎';
+          btnEliminar.disabled = false;
+        }
+
+        function confirmarEdicion() {
+          if (procesando) return;
+          const input = span.querySelector('input');
+          if (!input) return;
+          const nuevo = input.value.trim();
+          if (!nuevo || nuevo === cat) {
+            salirModoEdicion();
+            return;
+          }
+
+          procesando = true;
+          input.disabled = true;
+          btnEditar.disabled = true;
+          mostrarMsg('', '');
+
+          const fn = tipo === 'gasto' ? 'renameCategoria' : 'renameCategoriaIngreso';
+          google.script.run
+            .withSuccessHandler(function() {
+              mostrarMsg('Categoría actualizada ✓', 'ok');
+              cargarCategorias();
+            })
+            .withFailureHandler(function(err) {
+              procesando = false;
+              mostrarMsg('Error: ' + err.message, 'error');
+              salirModoEdicion();
+            })
+            [fn](cat, nuevo);
+        }
+
+        function entrarModoEdicion() {
+          editando = true;
+          span.innerHTML = '';
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = cat;
+          span.appendChild(input);
+          input.focus();
+          input.select();
+          btnEditar.textContent = '✓';
+          btnEliminar.disabled = true;
+
+          input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') confirmarEdicion();
+            if (e.key === 'Escape') salirModoEdicion();
+          });
+          input.addEventListener('blur', function() {
+            setTimeout(function() {
+              if (editando) confirmarEdicion();
+            }, 150);
+          });
+        }
+
+        btnEditar.addEventListener('click', function() {
+          if (procesando) return;
+          if (editando) {
+            confirmarEdicion();
+          } else {
+            entrarModoEdicion();
+          }
+        });
+
+        btnEliminar.addEventListener('click', function() {
+          if (!confirm('¿Eliminar la categoría "' + cat + '"? Los movimientos ya guardados con esta categoría no se borran, solo dejará de estar disponible para nuevos registros.')) return;
+
+          btnEliminar.disabled = true;
+          btnEditar.disabled = true;
+          mostrarMsg('', '');
+
+          const fn = tipo === 'gasto' ? 'deleteCategoria' : 'deleteCategoriaIngreso';
+          google.script.run
+            .withSuccessHandler(function() {
+              mostrarMsg('Categoría eliminada ✓', 'ok');
+              cargarCategorias();
+            })
+            .withFailureHandler(function(err) {
+              btnEliminar.disabled = false;
+              btnEditar.disabled = false;
+              mostrarMsg('Error: ' + err.message, 'error');
+            })
+            [fn](cat);
+        });
+
+        li.appendChild(span);
+        li.appendChild(btnEditar);
+        li.appendChild(btnEliminar);
+        ul.appendChild(li);
+      });
+    }
+
+    function agregarCategoria(inputId, btnId, fn) {
+      const input = document.getElementById(inputId);
+      const btn = document.getElementById(btnId);
+      const nombre = input.value.trim();
+
+      if (!nombre) {
+        mostrarMsg('Escribe un nombre para la categoría', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+      mostrarMsg('', '');
+
+      google.script.run
+        .withSuccessHandler(function() {
+          input.value = '';
+          btn.disabled = false;
+          mostrarMsg('Categoría agregada ✓', 'ok');
+          cargarCategorias();
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          mostrarMsg('Error: ' + err.message, 'error');
+        })
+        [fn](nombre);
+    }
+
+    document.getElementById('btnAgregarGasto').addEventListener('click', function() {
+      agregarCategoria('nuevaGasto', 'btnAgregarGasto', 'addCategoria');
+    });
+    document.getElementById('btnAgregarIngreso').addEventListener('click', function() {
+      agregarCategoria('nuevaIngreso', 'btnAgregarIngreso', 'addCategoriaIngreso');
+    });
+
+    function cargarCategorias() {
+      google.script.run
+        .withSuccessHandler(function(categorias) {
+          pintarLista(categorias, 'listaGastos', 'vacioGastos', 'gasto');
+        })
+        .getCategorias();
+
+      google.script.run
+        .withSuccessHandler(function(categorias) {
+          pintarLista(categorias, 'listaIngresos', 'vacioIngresos', 'ingreso');
+        })
+        .getCategoriasIngresos();
+    }
+
+    cargarCategorias();
+  </script>
+</body>
+</html>
